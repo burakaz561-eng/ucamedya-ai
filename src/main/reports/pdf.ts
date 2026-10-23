@@ -70,6 +70,7 @@ export async function htmlToPdf(html: string, outPath: string): Promise<void> {
     await new Promise((r) => setTimeout(r, 250))
     const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0, bottom: 0, left: 0, right: 0 }, preferCSSPageSize: true })
     writeFileSync(outPath, pdf)
+    if (process.env.UCAMEDYA_DEBUG_HTML) writeFileSync(`${outPath}.html`, html, 'utf8')
   } finally {
     win.destroy()
     rmSync(tmp, { recursive: true, force: true })

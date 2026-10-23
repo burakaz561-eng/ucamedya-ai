@@ -1,0 +1,127 @@
+# UcaMedya AI Growth Studio — Özellik Durum Raporu ve Test Raporu
+
+Sürüm **0.1.0** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
+
+Durum etiketleri:
+
+| Etiket | Anlamı |
+|---|---|
+| ✅ **Tamamlandı ve test edildi** | Kod yazıldı, otomatik testlerle ve/veya gerçek ortamda doğrulandı |
+| 🟡 **Tamamlandı, gerçek hesapla test edilmedi** | Kod yazıldı ve hata durumları ele alındı; ancak gerçek bir hesap/anahtar ile uçtan uca denenmedi |
+| 🔑 **API anahtarı veya kullanıcı izni bekliyor** | Çalışması için sizin eklemeniz gereken bir anahtar/hesap var |
+| ⬜ **Henüz geliştirilmedi** | Bu sürümde yok |
+| ⛔ **Teknik/hukuki nedenle desteklenmiyor** | Bilinçli olarak yapılmadı |
+
+## 1. Özellik durumu
+
+### Marka, açılış ve arayüz
+| Özellik | Durum | Not |
+|---|---|---|
+| Resmî UcaMedya logosu (ucamedya.com.tr tema dosyalarından) | ✅ | Uygulama, rapor, teklif ve simgede kullanılıyor; yeni logo çizilmedi |
+| Logo yükleme (marka ayarları) | ✅ | PNG/SVG/JPG |
+| Marka renkleri / tipografi (Outfit + Inter Tight, Türkçe karakter) | ✅ | Siteyle aynı tokenlar (#E95A1B, antrasit) |
+| Açık / koyu tema | ✅ | |
+| 3D robot "Uca" (Three.js, PBR malzeme, logo göğüste) | ✅ | Kodla modellendi (GLB dosyası yerine prosedürel model) |
+| Sinematik açılış (kamera hareketi, selamlama, ~3 sn, Atla) | ✅ | Ayarlardan kapatılabilir |
+| Gerçek sistem kontrolleri açılışta (başarısız olan sahte başarılı gösterilmez) | ✅ | Test: AI anahtarı yokken uyarı gösteriliyor |
+| Düşük performans için 2D robot (hafif mod / WebGL yok) | ✅ | |
+| Robot olay bildirimleri (analiz bitti, hata, rapor) — kapatılabilir | ✅ | |
+| Kurulum sihirbazı (marka, klasör, AI, arama, e-posta, WhatsApp, güvenlik) | ✅ | |
+| 16 menülü panel, daraltılabilir menü, genel arama (Ctrl+K), bildirimler | ✅ | |
+| Tablolarda sütun gizleme/genişlik ayarı, sıralama, kayıtlı filtreler | ✅ | |
+| Klavye kısayolları (Ctrl+K/B/N, Alt+1…9, Esc) | ✅ | |
+
+### Araştırma (AI Müşteri Bulucu)
+| Özellik | Durum | Not |
+|---|---|---|
+| Sektör (16 + özel), il/ilçe (81 il, 973 ilçe), çoklu konum, müşteri türü, hedef sayı | ✅ | |
+| Google Places API (New) ile şirket keşfi | 🔑 🟡 | Kod resmî dokümana göre yazıldı; anahtarınızla denenmedi |
+| SerpAPI (Google Haritalar) | 🔑 🟡 | |
+| Brave Search API | 🔑 🟡 | |
+| Manuel CSV içe aktarma | ✅ | Türkçe başlıklar, `;`/`,` ayırıcı |
+| Tekrar kaydı engeli (alan adı, telefon, e-posta, ad+şehir, sağlayıcı kimliği) | ✅ | |
+| Şirket bazında canlı aşama gösterimi | ✅ | |
+| Sitesiz şirketi "web sitesi yok" olarak kaydetme; erişilemeyen siteyi "kötü" saymama | ✅ | |
+| Kota dolduğunda bildirme, eldeki sonuçlarla tamamlama | ✅ (birim test) | |
+| Duraklat / devam / iptal, uygulama kapanınca kaldığı yerden devam | ✅ | |
+| Otomasyon profilleri (6 hazır + kaydet) | ✅ | |
+
+### Web sitesi analizi
+| Özellik | Durum | Not |
+|---|---|---|
+| Masaüstü (1440 px) + mobil (390 px) tarama, sistemdeki Edge/Chrome | ✅ | ucamedya.com.tr üzerinde ~35 sn |
+| Görsel tasarım, mobil, UX, performans, SEO, kurumsal güven kontrolleri (≈45 ölçüt) | ✅ | Her bulgu "ölçüldü" / "sezgisel" olarak etiketli |
+| Ekran görüntüleri (ana sayfa, hizmetler, hakkımızda, iletişim, sorunlu bölüm) + meta veri | ✅ | Tam sayfa görüntüler JPEG ile küçültülüyor |
+| robots.txt'ye uyum, yerel ağ adreslerine erişim engeli (SSRF) | ✅ | |
+| Bozuk bağlantı, HTTPS, site haritası, robots.txt, yapılandırılmış veri | ✅ | |
+| PageSpeed Insights (Lighthouse, Core Web Vitals) | 🔑 🟡 | Anahtarsız kota çok düşük; yoksa "yapılamadı" yazılır, tahmin üretilmez |
+| Puan + gerekçe + güven düzeyi + ölçüm kapsamı | ✅ | Ağırlıklar ayarlardan düzenlenir |
+| Yapay zekâ özeti (yalnızca bulgulardan) | 🔑 🟡 | Anthropic/OpenAI anahtarı gerekir |
+| Yeniden analizde yeni sürüm (eski silinmez) | ✅ | |
+| PDF analiz raporu (14 bölüm, kapak, ekran görüntüleri) | ✅ | |
+
+### CRM, iletişim, satış
+| Özellik | Durum | Not |
+|---|---|---|
+| Müşteri kartı (tüm alanlar), 16 düzenlenebilir aşama, etiket, not, görev, dosya, geçmiş | ✅ | |
+| Fırsat puanı (0–100) + gerekçeler + 7 öncelik grubu | ✅ | |
+| Birleştirme, yinelenen bulma, arşiv, güvenli kalıcı silme politikası | ✅ | Teklifli/kazanılmış/korumalı kayıt silinemez; klasör "_Silinenler"e taşınır |
+| CSV + Excel dışa aktarma | ✅ | |
+| AI Mesaj Stüdyosu: 6 ton, 10 düzenleme eylemi, kanıt paneli | 🔑 🟡 | AI anahtarı yoksa şablon taslak (✅ test edildi) |
+| İzin/ret kayıtları, kişisel–kurumsal veri ayrımı, ret listesi (silinmez) | ✅ | |
+| Gönderim kuyruğu: onay zorunlu, tekrar gönderim engeli, duraklat/devam/iptal, test modu | ✅ (hesapsız kısımlar) | |
+| E-posta gönderimi (SMTP: Gmail, Workspace, Outlook, M365, kurumsal) | 🔑 🟡 | Gerçek hesapla gönderim denenmedi |
+| E-posta yanıt takibi (IMAP) + "İSTEMİYORUM" yanıtlarını ret listesine alma | 🔑 🟡 | |
+| E-posta OAuth (Gmail/Microsoft) | ⬜ | Uygulama şifresiyle SMTP/IMAP kullanılır |
+| E-posta açılma/tıklama takibi | ⛔ | Gizlilik/mevzuat ve güvenilirlik nedeniyle yapılmadı |
+| WhatsApp manuel tıkla-gönder (wa.me) | ✅ (kod) / 🟡 | Mesaj WhatsApp'ta açılır, göndermeyi kullanıcı yapar |
+| WhatsApp Business Platform (Cloud API, şablon mesaj, sağlık/şablon kontrolü) | 🔑 🟡 | Meta hesabı, onaylı şablon gerekir |
+| WhatsApp teslim/okunma bilgisi ve gelen mesajlar | ⬜ | Webhook için herkese açık sunucu gerekir |
+| WhatsApp Web otomasyonu / spam önleme atlatma | ⛔ | Hesap kısıtlama riski ve kurallar nedeniyle yapılmadı |
+| Teklif: hizmet kataloğu (12, fiyatsız), KDV, indirim, geçerlilik, ödeme koşulu, geçmiş, PDF | ✅ | |
+| Görevler, hatırlatıcı (masaüstü bildirimi), otomatik "yanıtı değerlendir" görevi | ✅ | |
+| Raporlar: huni, sorunlar, kanal performansı, sektör/şehir; toplu araştırma PDF | ✅ | |
+
+### Sistem
+| Özellik | Durum | Not |
+|---|---|---|
+| SQLite + sürümlü migration (30 tablo) | ✅ | |
+| Müşteri klasör sistemi (yıl/sektör/il/firma-id) + Dosya Merkezi senkronu | ✅ | |
+| Kalıcı görev motoru (eşzamanlılık sınırı, yarıda kalan görev tespiti) | ✅ | |
+| Yedek: otomatik/manuel, bütünlük kontrolü, geri yükleme öncesi yedek, dışa aktarma | ✅ | Geri yükleme butonu arayüzde var; e2e'de çalıştırılmadı (uygulamayı yeniden başlatır) |
+| API anahtarları/parolalar: Windows DPAPI / macOS Anahtar Zinciri (safeStorage) | ✅ | Günlüklerde maskeleme |
+| Uygulama kilidi (scrypt, deneme sınırı) | ✅ (kod) | |
+| Güvenli IPC (tek kanal, izinli komut listesi, zod doğrulama), contextIsolation, sandbox, CSP | ✅ | e2e'de doğrulandı |
+| Entegrasyon merkezi (12 kart: durum, son kontrol, izinler, eksikler, test, kes, hata) | ✅ | |
+| Windows kurulum paketi (NSIS) | ✅ | `release/UcaMedyaAI-Setup-0.1.0.exe`, imzasız |
+| macOS DMG (Intel + Apple Silicon) yapılandırması, imza/notarization hazırlığı | 🟡 | Windows'ta derlenemez; bir Mac'te `npm run dist:mac` |
+| Harici CRM / bulut depolama entegrasyonu | ⬜ | Excel/CSV ile veri taşınabilir; veri klasörü bulut senkron klasöründe seçilebilir |
+| Otomatik güncelleme | ⬜ | |
+| Çok kullanıcılı sunucu sürümü | ⬜ | Veri katmanı modüler; SQLite'tan sunucuya taşınabilir |
+
+## 2. Test raporu (2026-10-24)
+
+| Test | Sonuç |
+|---|---|
+| `npm run typecheck` (ana süreç + arayüz, strict TypeScript) | ✅ hatasız |
+| `npm test` — 38 birim testi (kurallar, puanlama, uygunluk, tekrar/birleştirme/ret, teklif hesabı, sırlar, ayarlar, yedek, görev motoru, CSV, robots, SSRF) | ✅ 38/38 |
+| `LIVE=1` canlı analiz testi (ucamedya.com.tr) | ✅ |
+| `npm run test:e2e` — derlenmiş uygulama, 21 adım | ✅ 21/21 |
+| `npm run test:e2e -- --exe …` — **paketlenmiş** uygulama, 21 adım | ✅ 21/21 |
+
+Uçtan uca test adımları: açılış ve gerçek sistem kontrolleri · renderer'da Node erişimi olmadığı · bilinmeyen IPC komutunun ve veri klasörü dışı yolun reddi · kurulum sihirbazı · 16 ekranın boş veriyle açılması · anahtarsız araştırmanın sahte başarı göstermemesi · şirket ekleme + yinelenen engeli · gerçek site analizi + 7 ekran görüntüsü + PDF · yeniden analizde sürüm 2 · müşteri kartı · şablon taslak + hesapsız kuyruğa almanın engellenmesi · ret listesindeki şirkete taslak engeli + silinen şirketin ret kaydının korunması · teklif (50.000 TL, %10 indirim, %20 KDV = 54.000 TL) + PDF · görev · yedek + doğrulama · koyu tema · yakalanmamış arayüz hatası olmaması.
+
+Testlerin bulduğu ve düzeltilen hatalar: Türkçe "İ" harfli butonların (İletişim) tespit edilmemesi (yanlış "teklif butonu yok" bulgusu) · "Proje Başlat" ifadesinin eylem düğmesi sayılmaması · gizli açılır menülerin menü öğesi sayılması · CSV'de "İl" başlığının tanınmaması · koyu temada logo · gece saatinde "Günaydın" · teklif hazırlanan şirketin "toplantıya dönüşen" sayılması.
+
+## 3. Bilinen sınırlamalar
+
+1. **Arama sağlayıcıları**: Google Custom Search JSON API yeni müşterilere kapalı olduğu için kullanılmadı; Google Places API (New) önerilir (ücretli, sorgu başına en fazla 60 sonuç). Hedef sayı garanti değildir.
+2. **İletişim bilgileri** yalnızca şirketin kendi sitesinden ve arama sağlayıcısından alınır; rehber/sosyal ağ kazıması yapılmaz. Bu nedenle bazı şirketlerde e-posta bulunamayabilir.
+3. **Analiz ölçümleri** test anındaki ağ ve sunucu koşullarını yansıtır; yerel zamanlama ölçümleri tek denemedir. Core Web Vitals yalnızca PageSpeed anahtarıyla ölçülür.
+4. **"Sezgisel"** etiketli bulgular (eski tasarım işaretleri, menü yapısı vb.) kesin tespit değildir; raporlarda ve mesajlarda ihtiyatlı dille sunulur.
+5. **WhatsApp**: Resmî API'de ilk mesaj yalnızca onaylı şablonla gider; teslim/okunma/gelen mesaj için webhook aktarım sunucusu gerekir (bu sürümde yok).
+6. **E-posta**: OAuth yok; Gmail/Workspace için uygulama şifresi, Microsoft 365 için SMTP AUTH izni gerekir. Teslim bilgisi "sunucu kabul etti" düzeyindedir.
+7. **Hukuki uygunluk**: Uygulama ret listesi, onay, kişisel veri ayrımı ve tekrar gönderim engeli uygular; 6563 sayılı Kanun / İYS / KVKK uygunluğunu **garanti etmez**.
+8. **Kod imzalama**: Windows kurulumu imzasızdır (SmartScreen uyarısı çıkabilir). macOS için Apple Developer hesabı gerekir.
+9. **Robot** GLB dosyası olarak değil, kodla modellenmiştir; GLTFExporter ile dışa aktarılabilir ancak bu sürümde dışa aktarma düğmesi yoktur.
+10. **Tek kullanıcı**: "Müşteri sorumlusu" alanı serbest metindir; kullanıcı hesapları/yetkilendirme yoktur (uygulama kilidi vardır).

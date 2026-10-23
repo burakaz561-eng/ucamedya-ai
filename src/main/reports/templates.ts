@@ -185,7 +185,7 @@ export function offerHtml(b: BrandForPdf, o: OfferPdfData): string {
   <div>${b.logoDataUri ? `<img class="logo" src="${b.logoDataUri}">` : `<div class="display" style="font-size:18pt;font-weight:700">${esc(b.name)}</div>`}
   <div class="small muted" style="margin-top:6px">${esc(b.address)}<br>${esc(b.website)}${b.email ? ` · ${esc(b.email)}` : ''}${b.phone ? ` · ${esc(b.phone)}` : ''}</div></div>
   <div style="text-align:right"><div class="kicker" style="color:#E95A1B;letter-spacing:.18em;font-size:8.5pt;font-weight:600">FİYAT TEKLİFİ</div><div class="display" style="font-size:18pt;font-weight:700">${esc(o.number)}</div>
-  <div class="small">Tarih: ${trDate(o.date)}<br>Geçerlilik: ${trDate(o.validUntil)}</div></div>
+  <div class="small">Tarih: ${trDate(o.date)}<br>${o.validUntil ? `Geçerlilik: ${trDate(o.validUntil)}` : ''}</div></div>
 </div>
 <div class="card"><div class="small muted">SAYIN</div><b>${esc(o.company.name)}</b><div class="small">${esc([o.company.address, o.company.city].filter(Boolean).join(', '))}${o.company.email ? `<br>${esc(o.company.email)}` : ''}${o.company.phone ? ` · ${esc(o.company.phone)}` : ''}</div></div>
 <h2>${esc(o.title)}</h2>
@@ -201,7 +201,7 @@ ${o.discountAmount ? `<tr><td>İndirim ${esc(o.discountLabel ?? '')}</td><td cla
 ${o.delivery ? `<h3>Tahmini teslim süresi</h3><p>${esc(o.delivery)}</p>` : ''}
 ${o.paymentTerms ? `<h3>Ödeme koşulları</h3><p>${esc(o.paymentTerms)}</p>` : ''}
 ${o.notes ? `<h3>Açıklamalar</h3><p style="white-space:pre-wrap">${esc(o.notes)}</p>` : ''}
-<div class="footer">Bu teklif ${trDate(o.validUntil)} tarihine kadar geçerlidir. ${esc(b.name)} · ${esc(b.website)}</div>
+<div class="footer">${o.validUntil ? `Bu teklif ${trDate(o.validUntil)} tarihine kadar geçerlidir. ` : ''}${esc(b.name)} · ${esc(b.website)}</div>
 </body></html>`
 }
 

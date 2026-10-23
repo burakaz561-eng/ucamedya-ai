@@ -1,0 +1,68 @@
+# UcaMedya AI Growth Studio — paketleme yapılandırması (electron-builder)
+#   npm run dist       → Windows kurulum paketi (NSIS, x64)       release/UcaMedyaAI-Setup-<sürüm>.exe
+#   npm run dist:mac   → macOS DMG (Intel x64 + Apple Silicon arm64) — yalnızca bir Mac üzerinde derlenebilir
+appId: com.ucamedya.aigrowthstudio
+productName: UcaMedya AI Growth Studio
+copyright: Copyright © 2026 UcaMedya
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+asar: true
+# Tarayıcı sürücüsü asar arşivinin dışında olmalıdır
+asarUnpack:
+  - node_modules/playwright-core/**
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/fonts
+    to: fonts
+  - from: resources/brand
+    to: brand
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  # Kod imzalama sertifikası yoksa Windows SmartScreen "tanınmayan yayımcı" uyarısı gösterebilir (bkz. docs/KURULUM.md)
+  signAndEditExecutable: true
+nsis:
+  artifactName: UcaMedyaAI-Setup-${version}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: UcaMedya AI
+  menuCategory: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  uninstallDisplayName: UcaMedya AI Growth Studio ${version}
+  # Güncelleme ve kaldırmada kullanıcı verileri korunur (aşağıdaki installer.nsh soruyu yönetir)
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+  installerLanguages:
+    - tr_TR
+  language: '1055'
+  multiLanguageInstaller: false
+mac:
+  icon: build/icon.png
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # İmzalama: Apple Developer ID sertifikası anahtar zincirinde olmalı (CSC_NAME ortam değişkeni).
+  # Notarization: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID ortam değişkenleri tanımlıyken
+  # aşağıdaki satırı "notarize: true" yapın.
+  notarize: false
+dmg:
+  artifactName: UcaMedyaAI-${version}-${arch}.${ext}
+  title: UcaMedya AI Growth Studio
+publish: null

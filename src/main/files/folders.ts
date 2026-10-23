@@ -41,14 +41,14 @@ export class FileStore {
   }
 
   analysisDir(companyId: number, version: number): string {
-    const dir = join(this.companyDir(companyId), 'analyses', `v${version}-${new Date().toISOString().slice(0, 10)}`)
+    const dir = join(this.companyDir(companyId), 'analyses', `v${version}-${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}`)
     mkdirSync(join(dir, 'screenshots'), { recursive: true })
     return dir
   }
 
   /** Şirket bağlı olmayan (hızlı) analizler için klasör. */
   looseAnalysisDir(id: number): string {
-    const dir = join(this.root(), 'Hızlı Analizler', `analiz-${id}-${new Date().toISOString().slice(0, 10)}`)
+    const dir = join(this.root(), 'Hızlı Analizler', `analiz-${id}-${new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}`)
     mkdirSync(join(dir, 'screenshots'), { recursive: true })
     return dir
   }

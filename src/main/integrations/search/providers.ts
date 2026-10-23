@@ -10,7 +10,7 @@
 import type { PoliteFetcher } from '../../http/fetcher'
 import { FetchError } from '../../http/fetcher'
 import type { SearchHit } from '@shared/types'
-import { isOfficialWebsite, normalizeWebsite } from '@shared/text'
+import { fold, isOfficialWebsite, normalizeWebsite } from '@shared/text'
 
 export interface SearchProvider {
   key: 'google_places' | 'serpapi' | 'brave'
@@ -255,21 +255,21 @@ export function parseCsv(text: string): string[][] {
 }
 
 const COLS: Record<keyof SearchHit | 'email' | 'sector', RegExp> = {
-  name: /^(şirket|sirket|firma|ad|isim|name|company|unvan|ünvan)/i,
-  address: /^(adres|address)/i,
-  city: /^(il|şehir|sehir|city)$/i,
-  district: /^(ilçe|ilce|district)$/i,
-  website: /^(web|site|website|url)/i,
-  phone: /^(telefon|tel|phone|gsm)/i,
-  email: /^(e-?posta|email|mail)/i,
-  sector: /^(sektör|sektor|sector|kategori)/i,
+  name: /^(sirket|firma|ad|isim|name|company|unvan)/,
+  address: /^(adres|address)/,
+  city: /^(il|sehir|city)$/,
+  district: /^(ilce|district)$/,
+  website: /^(web|site|website|url)/,
+  phone: /^(telefon|tel|phone|gsm)/,
+  email: /^(e-?posta|email|mail)/,
+  sector: /^(sektor|sector|kategori)/,
   sourceRef: /^$/, businessStatus: /^$/, rating: /^$/, ratingCount: /^$/, types: /^$/, mapsUrl: /^$/
 }
 
 export function csvToHits(text: string): (SearchHit & { email?: string; sector?: string })[] {
   const rows = parseCsv(text.replace(/^﻿/, ''))
   if (rows.length < 2) return []
-  const header = rows[0].map((h) => h.trim())
+  const header = rows[0].map((h) => fold(h.trim()))
   const idx = (k: keyof typeof COLS) => header.findIndex((h) => COLS[k].test(h))
   const map = { name: idx('name'), address: idx('address'), city: idx('city'), district: idx('district'), website: idx('website'), phone: idx('phone'), email: idx('email'), sector: idx('sector') }
   if (map.name < 0) throw new Error('CSV dosyasında "Şirket" / "Firma" / "Ad" sütunu bulunamadı.')

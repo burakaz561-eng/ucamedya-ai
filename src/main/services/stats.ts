@@ -24,7 +24,7 @@ export class StatsService {
       whatsappDelivered: n(d, "SELECT COUNT(*) AS n FROM outreach_messages WHERE channel = 'whatsapp' AND status IN ('delivered','read')"),
       replies: n(d, "SELECT COUNT(DISTINCT company_id) AS n FROM communication_events WHERE kind = 'reply'"),
       positive: n(d, "SELECT COUNT(*) AS n FROM companies WHERE stage_key IN ('meeting','offer_prepared','offer_sent','negotiation','won')"),
-      meetings: n(d, "SELECT COUNT(*) AS n FROM companies WHERE stage_key IN ('meeting','offer_prepared','offer_sent','negotiation','won')"),
+      meetings: n(d, "SELECT COUNT(DISTINCT c.id) AS n FROM companies c WHERE c.stage_key = 'meeting' OR EXISTS (SELECT 1 FROM activity_logs a WHERE a.company_id = c.id AND a.action = 'Aşama değişti' AND a.detail LIKE '%Görüşme planlandı%') OR EXISTS (SELECT 1 FROM communication_events e WHERE e.company_id = c.id AND e.kind = 'meeting')"),
       offers: n(d, 'SELECT COUNT(*) AS n FROM offers'),
       won: n(d, "SELECT COUNT(*) AS n FROM companies WHERE stage_key = 'won'"),
       pipelineValue: d.get<{ v: number }>("SELECT COALESCE(SUM(total),0) AS v FROM offers WHERE status IN ('draft','sent','negotiation')")?.v ?? 0,
