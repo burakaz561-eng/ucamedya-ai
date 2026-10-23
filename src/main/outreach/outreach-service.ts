@@ -1,0 +1,435 @@
+// İletişim Merkezi: taslaklar, onay, gönderim kuyruğu (duraklat/devam/iptal), kanal gönderimi,
+// gelen yanıt eşleştirme ve ret listesi uygulaması.
+//
+// Güvenlik ilkeleri:
+//  - Onaylanmamış taslak gönderilmez (ayar kapatılmadıkça).
+//  - Her mesajın benzersiz bir idempotency anahtarı vardır → aynı alıcıya aynı kampanyada ikinci kez gönderilemez.
+//  - Duraklatıldığında yeni mesaj gönderilmez; devam edildiğinde her mesaj yeniden uygunluk kontrolünden geçer.
+//  - Gönderim sırasında uygulama kapanırsa "gönderiliyor" kalan kayıt otomatik yeniden GÖNDERİLMEZ (durum belirsiz olarak işaretlenir).
+//  - Test modunda hiçbir gerçek şirkete mesaj gitmez; tüm iletiler test alıcısına yönlendirilir.
+//  - Gönderim aralıkları yalnızca sağlayıcı sınırları ve güvenilirlik içindir; rastgele bekleme / tespit atlatma YOKTUR.
+
+import { shell } from 'electron'
+import type { Db } from '../database/db'
+import { j } from '../database/db'
+import type { CompanyService } from '../services/companies'
+import type { SettingsService } from '../services/settings'
+import type { SecretStore } from '../security/secrets'
+import type { FileStore } from '../files/folders'
+import type { AiProvider } from '../integrations/ai/ai-client'
+import { aiDraft, rewriteDraft, templateDraft, type DraftContext } from './drafting'
+import { checkEligibility, idempotencyKey, isOptOutReply } from './compliance'
+import { clickToChatUrl, fetchInbox, sendEmail, whatsappSendTemplate, type EmailAccount } from './channels'
+import { emailKey, isTrMobile, phoneKey } from '@shared/text'
+import { join } from 'node:path'
+import { log } from '../logger'
+
+type Channel = 'email' | 'whatsapp'
+
+export class OutreachService {
+  private loops = new Map<Channel, boolean>()
+
+  constructor(
+    private db: Db,
+    private companies: CompanyService,
+    private settings: SettingsService,
+    private secrets: SecretStore,
+    private files: FileStore,
+    private getAi: () => AiProvider | null,
+    private emitChange: (scope: string) => void
+  ) {}
+
+  recover() {
+    this.db.run("UPDATE outreach_messages SET status = 'failed', error = 'Durum belirsiz: uygulama gönderim sırasında kapandı. Alıcıya ulaşmış olabilir; otomatik yeniden gönderilmez.' WHERE status = 'sending'")
+    for (const ch of ['email', 'whatsapp'] as Channel[]) if (this.queueState(ch) === 'running') this.settings.setValue(`queue:${ch}`, 'paused')
+  }
+
+  // ---------------- Taslaklar ----------------
+  private context(companyId: number, channel: Channel, tone: string): DraftContext {
+    const c = this.db.get<{ name: string; sector: string | null; city: string | null; website: string | null; website_status: string }>('SELECT name, sector, city, website, website_status FROM companies WHERE id = ?', companyId)
+    if (!c) throw new Error('Şirket bulunamadı')
+    const a = this.db.get<{ id: number }>("SELECT id FROM website_analyses WHERE company_id = ? AND status = 'done' ORDER BY id DESC LIMIT 1", companyId)
+    const findings = a ? this.db.all<DraftContext['findings'][number]>('SELECT code, category, title, evidence, severity, recommendation, certainty FROM analysis_findings WHERE analysis_id = ? ORDER BY CASE severity WHEN \'high\' THEN 0 WHEN \'medium\' THEN 1 ELSE 2 END', a.id) : []
+    const s = this.settings.get()
+    return {
+      company: { name: c.name, sector: c.sector, city: c.city, website: c.website, websiteStatus: c.website_status },
+      findings,
+      services: this.db.all<{ name: string }>('SELECT name FROM services WHERE active = 1 ORDER BY position').map((x) => x.name),
+      brand: { name: s.brand.name, website: s.brand.website, email: s.brand.email, phone: s.brand.phone, signature: s.brand.signature, senderName: s.brand.senderName },
+      channel,
+      tone,
+      optOutLine: s.outreach.includeOptOutLine ? s.outreach.optOutText : null
+    }
+  }
+
+  async createDraft(companyId: number, channel: Channel, tone = 'professional', useAi = true) {
+    if (this.companies.isSuppressed(companyId)) throw new Error('Bu şirket ret listesinde; taslak oluşturulmaz.')
+    const ctx = this.context(companyId, channel, tone)
+    const ai = useAi && this.settings.get().ai.enabled ? this.getAi() : null
+    const out = useAi ? await aiDraft(ai, ctx) : templateDraft(ctx)
+    const analysisId = this.db.get<{ id: number }>("SELECT id FROM website_analyses WHERE company_id = ? AND status = 'done' ORDER BY id DESC LIMIT 1", companyId)?.id ?? null
+    const r = this.db.run('INSERT INTO outreach_drafts(company_id, analysis_id, channel, tone, subject, body, generator, used_findings) VALUES (?,?,?,?,?,?,?,?)', companyId, analysisId, channel, tone, out.subject, out.body, out.generator, JSON.stringify(out.usedFindings))
+    this.writeDraftFile(companyId, channel, out.subject, out.body)
+    this.companies.log(companyId, `${channel === 'email' ? 'E-posta' : 'WhatsApp'} taslağı oluşturuldu`, out.warning ?? (out.generator === 'ai' ? 'Yapay zekâ ile' : 'Şablon ile'), 'system', 'draft', r.lastInsertRowid)
+    this.emitChange('drafts')
+    return { id: r.lastInsertRowid, warning: out.warning }
+  }
+
+  async createDrafts(companyId: number, channels: Channel[], tone: string) {
+    const hasEmail = !!this.db.get("SELECT 1 FROM company_contacts WHERE company_id = ? AND type = 'email'", companyId)
+    const hasPhone = !!this.db.get("SELECT 1 FROM company_contacts WHERE company_id = ? AND type IN ('phone','whatsapp')", companyId)
+    for (const ch of channels) {
+      if ((ch === 'email' && !hasEmail) || (ch === 'whatsapp' && !hasPhone)) continue
+      if (this.db.get("SELECT 1 FROM outreach_drafts WHERE company_id = ? AND channel = ? AND status IN ('draft','approved')", companyId, ch)) continue
+      await this.createDraft(companyId, ch, tone)
+    }
+  }
+
+  private writeDraftFile(companyId: number, channel: Channel, subject: string | null, body: string) {
+    try {
+      const p = join(this.files.companyDir(companyId), 'outreach', channel === 'email' ? 'email-draft.txt' : 'whatsapp-draft.txt')
+      this.files.writeText(p, `${subject ? `Konu: ${subject}\n\n` : ''}${body}`)
+      this.files.register({ path: p, kind: 'draft', companyId })
+    } catch {
+      /* dosya yazılamazsa taslak veritabanında kalır */
+    }
+  }
+
+  updateDraft(id: number, patch: { subject?: string | null; body?: string; tone?: string }) {
+    const d = this.db.get<{ company_id: number; channel: Channel; status: string }>('SELECT company_id, channel, status FROM outreach_drafts WHERE id = ?', id)
+    if (!d) throw new Error('Taslak bulunamadı')
+    if (d.status === 'sent' || d.status === 'queued') throw new Error('Kuyruğa alınmış veya gönderilmiş taslak düzenlenemez')
+    this.db.run("UPDATE outreach_drafts SET subject = COALESCE(?, subject), body = COALESCE(?, body), tone = COALESCE(?, tone), generator = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE generator END, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", patch.subject ?? null, patch.body ?? null, patch.tone ?? null, patch.body ?? null, id)
+    const nd = this.db.get<{ subject: string | null; body: string }>('SELECT subject, body FROM outreach_drafts WHERE id = ?', id)!
+    this.writeDraftFile(d.company_id, d.channel, nd.subject, nd.body)
+  }
+
+  async rewrite(id: number, action: string) {
+    const d = this.db.get<{ company_id: number; channel: Channel; tone: string | null; subject: string | null; body: string }>('SELECT company_id, channel, tone, subject, body FROM outreach_drafts WHERE id = ?', id)
+    if (!d) throw new Error('Taslak bulunamadı')
+    const ctx = this.context(d.company_id, d.channel, d.tone ?? 'professional')
+    const out = await rewriteDraft(this.settings.get().ai.enabled ? this.getAi() : null, ctx, { subject: d.subject, body: d.body }, action)
+    const newChannel: Channel = action === 'to_email' ? 'email' : action === 'to_whatsapp' ? 'whatsapp' : d.channel
+    if (newChannel !== d.channel) {
+      const r = this.db.run("INSERT INTO outreach_drafts(company_id, channel, tone, subject, body, generator, used_findings) VALUES (?,?,?,?,?, 'ai', ?)", d.company_id, newChannel, d.tone, out.subject, out.body, JSON.stringify(out.usedFindings))
+      return { id: r.lastInsertRowid, created: true }
+    }
+    this.db.run("UPDATE outreach_drafts SET subject = ?, body = ?, generator = 'ai', used_findings = ?, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", out.subject, out.body, JSON.stringify(out.usedFindings), id)
+    this.writeDraftFile(d.company_id, d.channel, out.subject, out.body)
+    return { id, created: false }
+  }
+
+  listDrafts(f: { channel?: string; status?: string; companyId?: number }) {
+    const w: string[] = ['1=1']
+    const p: (string | number)[] = []
+    if (f.channel) w.push('d.channel = ?'), p.push(f.channel)
+    if (f.status) w.push('d.status = ?'), p.push(f.status)
+    if (f.companyId) w.push('d.company_id = ?'), p.push(f.companyId)
+    return this.db.all(
+      `SELECT d.*, c.name AS company_name, c.website, c.city, c.sector, c.opportunity_score,
+        (SELECT value FROM company_contacts x WHERE x.company_id = c.id AND x.type = 'email' ORDER BY x.kind = 'corporate' DESC, x.id LIMIT 1) AS email,
+        (SELECT value FROM company_contacts x WHERE x.company_id = c.id AND x.type IN ('whatsapp','phone') ORDER BY x.type = 'whatsapp' DESC, x.id LIMIT 1) AS phone,
+        (SELECT status FROM outreach_messages m WHERE m.draft_id = d.id ORDER BY m.id DESC LIMIT 1) AS send_status,
+        (SELECT COALESCE(m.status_at, m.sent_at, m.queued_at) FROM outreach_messages m WHERE m.draft_id = d.id ORDER BY m.id DESC LIMIT 1) AS last_action_at
+       FROM outreach_drafts d JOIN companies c ON c.id = d.company_id WHERE ${w.join(' AND ')} ORDER BY d.id DESC LIMIT 1000`,
+      ...p
+    ).map((r) => ({ ...r, used_findings: j(r.used_findings, []), eligibility: this.eligibilityFor(r.id as number) }))
+  }
+
+  setDraftStatus(ids: number[], status: 'approved' | 'draft' | 'rejected') {
+    for (const id of ids) {
+      const d = this.db.get<{ company_id: number; status: string }>('SELECT company_id, status FROM outreach_drafts WHERE id = ?', id)
+      if (!d || d.status === 'sent' || d.status === 'queued') continue
+      if (status === 'approved' && this.companies.isSuppressed(d.company_id)) continue
+      this.db.run(`UPDATE outreach_drafts SET status = ?, approved_at = ${status === 'approved' ? "strftime('%Y-%m-%dT%H:%M:%fZ','now')" : 'NULL'} WHERE id = ?`, status, id)
+      if (status === 'approved') {
+        this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('new','researching','awaiting_analysis','analyzed','review') THEN 'approved' ELSE stage_key END WHERE id = ?", d.company_id)
+        this.companies.log(d.company_id, 'İletişim taslağı onaylandı', `Taslak #${id}`)
+      }
+    }
+    this.emitChange('drafts')
+  }
+
+  // ---------------- Uygunluk ----------------
+  private recipient(companyId: number, channel: Channel): { key: string; display: string; kind: string } | null {
+    if (channel === 'email') {
+      const r = this.db.get<{ value: string; value_key: string; kind: string }>("SELECT value, value_key, kind FROM company_contacts WHERE company_id = ? AND type = 'email' ORDER BY kind = 'corporate' DESC, verified_at IS NOT NULL DESC, id LIMIT 1", companyId)
+      return r ? { key: r.value_key, display: r.value, kind: r.kind } : null
+    }
+    const r = this.db.get<{ value: string; value_key: string; kind: string }>("SELECT value, value_key, kind FROM company_contacts WHERE company_id = ? AND type IN ('whatsapp','phone') ORDER BY type = 'whatsapp' DESC, id LIMIT 1", companyId)
+    return r ? { key: r.value_key, display: r.value, kind: r.kind } : null
+  }
+
+  private emailAccount(): (EmailAccount & { daily_limit: number; status: string }) | undefined {
+    return this.db.get("SELECT * FROM email_accounts WHERE status = 'ok' ORDER BY id LIMIT 1") as (EmailAccount & { daily_limit: number; status: string }) | undefined
+  }
+
+  private whatsappAccount() {
+    return this.db.get<{ id: number; mode: 'cloud_api' | 'click_to_chat'; phone_number_id: string | null; template_name: string | null; template_lang: string | null; daily_limit: number; status: string }>('SELECT * FROM whatsapp_accounts ORDER BY id LIMIT 1')
+  }
+
+  private sentToday(channel: Channel) {
+    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM outreach_messages WHERE channel = ? AND status IN ('sent','delivered','read','manual_opened') AND date(sent_at) = date('now')", channel)?.n ?? 0
+  }
+
+  eligibilityFor(draftId: number) {
+    const d = this.db.get<{ company_id: number; channel: Channel; status: string }>('SELECT company_id, channel, status FROM outreach_drafts WHERE id = ?', draftId)
+    if (!d) return { ok: false, reasons: ['Taslak bulunamadı'], warnings: [] }
+    const s = this.settings.get()
+    const rec = this.recipient(d.company_id, d.channel)
+    const wa = this.whatsappAccount()
+    const perm = this.db.get<{ status: string }>('SELECT status FROM outreach_permissions WHERE company_id = ? AND channel = ?', d.company_id, d.channel)?.status ?? null
+    const acc = d.channel === 'email' ? this.emailAccount() : wa
+    return checkEligibility({
+      channel: d.channel,
+      recipientKey: rec?.key ?? '',
+      contactKind: rec?.kind ?? 'corporate',
+      draftStatus: d.status,
+      requireApproval: s.outreach.requireApproval,
+      suppressedCompany: this.companies.isSuppressed(d.company_id),
+      suppressedRecipient: rec ? this.companies.isRecipientSuppressed(d.channel === 'email' ? 'email' : 'phone', rec.key) : false,
+      permissionStatus: perm,
+      allowPersonalContacts: s.outreach.allowPersonalContacts,
+      alreadySentToRecipient: !!rec && !!this.db.get("SELECT 1 FROM outreach_messages WHERE channel = ? AND recipient_key = ? AND test_mode = 0 AND status IN ('queued','sending','sent','delivered','read','manual_opened')", d.channel, rec.key),
+      accountReady: d.channel === 'email' ? !!acc : !!wa && (wa.mode === 'click_to_chat' || wa.status === 'ok'),
+      dailySent: this.sentToday(d.channel),
+      dailyLimit: (acc as { daily_limit?: number } | undefined)?.daily_limit ?? 50,
+      whatsappMode: wa?.mode,
+      whatsappTemplateReady: !!wa?.template_name,
+      isMobileNumber: d.channel === 'whatsapp' && rec ? isTrMobile(rec.key) || !rec.key.startsWith('90') : undefined,
+      testMode: s.outreach.testMode,
+      testRecipientReady: d.channel === 'email' ? !!emailKey(s.outreach.testRecipientEmail) : !!phoneKey(s.outreach.testRecipientPhone)
+    })
+  }
+
+  setPermission(companyId: number, channel: Channel, status: string, legalBasis: string | null, purpose: string | null, evidence: string | null) {
+    if (!['unknown', 'b2b_legitimate_interest', 'opt_in', 'opted_out'].includes(status)) throw new Error('Geçersiz izin durumu')
+    this.db.run(
+      `INSERT INTO outreach_permissions(company_id, channel, status, legal_basis, purpose, evidence, recorded_by) VALUES (?,?,?,?,?,?, 'user')
+       ON CONFLICT(company_id, channel) DO UPDATE SET status = excluded.status, legal_basis = excluded.legal_basis, purpose = excluded.purpose, evidence = excluded.evidence, recorded_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+      companyId, channel, status, legalBasis, purpose, evidence
+    )
+    this.companies.log(companyId, 'İletişim izni kaydedildi', `${channel}: ${status}${legalBasis ? ` (${legalBasis})` : ''}`)
+    if (status === 'opted_out') this.companies.suppressCompany(companyId, `${channel} iletişim reddi`, 'user')
+  }
+
+  // ---------------- Kuyruk ----------------
+  enqueue(draftIds: number[], campaign: string | null = null): { queued: number; skipped: { id: number; reasons: string[] }[] } {
+    const s = this.settings.get()
+    let queued = 0
+    const skipped: { id: number; reasons: string[] }[] = []
+    for (const id of draftIds) {
+      const el = this.eligibilityFor(id)
+      if (!el.ok) {
+        skipped.push({ id, reasons: el.reasons })
+        continue
+      }
+      const d = this.db.get<{ company_id: number; channel: Channel; subject: string | null; body: string }>('SELECT company_id, channel, subject, body FROM outreach_drafts WHERE id = ?', id)!
+      const rec = this.recipient(d.company_id, d.channel)!
+      const key = idempotencyKey(d.channel, d.company_id, rec.key, campaign) + (s.outreach.testMode ? `:test:${Date.now()}` : '')
+      try {
+        this.db.run('INSERT INTO outreach_messages(company_id, draft_id, channel, recipient, recipient_key, subject, body, idempotency_key, campaign, test_mode) VALUES (?,?,?,?,?,?,?,?,?,?)', d.company_id, id, d.channel, rec.display, rec.key, d.subject, d.body, key, campaign, s.outreach.testMode)
+        this.db.run("UPDATE outreach_drafts SET status = 'queued' WHERE id = ?", id)
+        queued++
+      } catch {
+        skipped.push({ id, reasons: ['Bu alıcı için aynı kampanyada zaten bir mesaj kaydı var (tekrar gönderim engellendi).'] })
+      }
+    }
+    this.emitChange('outreach')
+    return { queued, skipped }
+  }
+
+  queueState(channel: Channel): 'running' | 'paused' | 'stopped' {
+    return (this.settings.getValue(`queue:${channel}`) as 'running' | 'paused' | 'stopped') ?? 'stopped'
+  }
+
+  startQueue(channel: Channel) {
+    const wa = this.whatsappAccount()
+    if (channel === 'whatsapp' && wa?.mode === 'click_to_chat') throw new Error('Manuel (tıkla-gönder) modunda kuyruk otomatik çalışmaz; "Sıradakini WhatsApp\'ta aç" düğmesini kullanın.')
+    this.settings.setValue(`queue:${channel}`, 'running')
+    this.emitChange('outreach')
+    if (!this.loops.get(channel)) void this.loop(channel)
+  }
+
+  pauseQueue(channel: Channel) {
+    this.settings.setValue(`queue:${channel}`, 'paused')
+    this.emitChange('outreach')
+  }
+
+  cancelQueue(channel: Channel) {
+    this.settings.setValue(`queue:${channel}`, 'stopped')
+    const r = this.db.run("UPDATE outreach_messages SET status = 'cancelled', status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE channel = ? AND status = 'queued'", channel)
+    this.db.run("UPDATE outreach_drafts SET status = 'approved' WHERE status = 'queued' AND channel = ? AND id NOT IN (SELECT draft_id FROM outreach_messages WHERE draft_id IS NOT NULL AND status IN ('queued','sending','sent','delivered','read','test_sent','manual_opened'))", channel)
+    this.emitChange('outreach')
+    return r.changes
+  }
+
+  private async loop(channel: Channel) {
+    this.loops.set(channel, true)
+    try {
+      while (this.queueState(channel) === 'running') {
+        const m = this.db.get<{ id: number }>("SELECT id FROM outreach_messages WHERE channel = ? AND status = 'queued' ORDER BY id LIMIT 1", channel)
+        if (!m) {
+          this.settings.setValue(`queue:${channel}`, 'stopped')
+          break
+        }
+        await this.processMessage(m.id)
+        this.emitChange('outreach')
+        const s = this.settings.get().outreach
+        const wait = (channel === 'email' ? s.emailIntervalSec : s.whatsappIntervalSec) * 1000
+        const until = Date.now() + wait
+        while (Date.now() < until && this.queueState(channel) === 'running') await new Promise((r) => setTimeout(r, 500))
+      }
+    } finally {
+      this.loops.set(channel, false)
+      this.emitChange('outreach')
+    }
+  }
+
+  private async processMessage(id: number) {
+    const m = this.db.get<{ id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string; test_mode: number; status: string }>('SELECT * FROM outreach_messages WHERE id = ?', id)
+    if (!m || m.status !== 'queued') return
+    // Devam ettirmede yeniden kontrol: ret listesi / izin değişmiş olabilir
+    if (m.draft_id) {
+      const el = this.eligibilityFor(m.draft_id)
+      const blocking = el.reasons.filter((r) => !/daha önce mesaj gönderilmiş/.test(r) && !/henüz onaylanmadı/.test(r))
+      if (blocking.length) {
+        this.db.run("UPDATE outreach_messages SET status = 'blocked', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", blocking.join(' '), id)
+        return
+      }
+    }
+    const s = this.settings.get()
+    const testMode = !!m.test_mode || s.outreach.testMode
+    this.db.run("UPDATE outreach_messages SET status = 'sending', attempts = attempts + 1 WHERE id = ?", id)
+    try {
+      let providerId = ''
+      if (m.channel === 'email') {
+        const acc = this.emailAccount()
+        if (!acc) throw new Error('Doğrulanmış e-posta hesabı yok')
+        const pass = this.secrets.get(`email_pass:${acc.id}`)
+        if (!pass) throw new Error('E-posta hesabı parolası kayıtlı değil')
+        const to = testMode ? s.outreach.testRecipientEmail : m.recipient_key
+        const subject = testMode ? `[TEST → ${m.recipient_key}] ${m.subject ?? ''}` : m.subject ?? ''
+        const r = await sendEmail(acc, pass, { to, subject, text: m.body, unsubscribeMailto: acc.from_email })
+        providerId = r.messageId
+      } else {
+        const wa = this.whatsappAccount()
+        if (!wa || wa.mode !== 'cloud_api' || !wa.phone_number_id || !wa.template_name) throw new Error('WhatsApp Business Platform hesabı yapılandırılmamış')
+        const token = this.secrets.get('whatsapp_token')
+        if (!token) throw new Error('WhatsApp erişim anahtarı kayıtlı değil')
+        const to = testMode ? phoneKey(s.outreach.testRecipientPhone) : m.recipient_key
+        const cname = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
+        const params = j<string[]>(this.settings.getValue('whatsapp_template_params') ?? '[]', [])
+        providerId = await whatsappSendTemplate(wa.phone_number_id, token, to, wa.template_name, wa.template_lang ?? 'tr', params.map((p) => (p === '{sirket}' ? cname : p)))
+      }
+      const st = testMode ? 'test_sent' : 'sent'
+      this.db.run("UPDATE outreach_messages SET status = ?, provider_message_id = ?, sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), error = NULL WHERE id = ?", st, providerId, id)
+      if (!testMode) {
+        if (m.draft_id) this.db.run("UPDATE outreach_drafts SET status = 'sent' WHERE id = ?", m.draft_id)
+        this.db.run('INSERT OR IGNORE INTO communication_events(company_id, message_id, channel, direction, kind, summary, external_id) VALUES (?,?,?,?,?,?,?)', m.company_id, id, m.channel, 'out', 'sent', m.subject ?? m.body.slice(0, 120), providerId || null)
+        this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('approved','review','analyzed','new') THEN 'waiting_reply' ELSE stage_key END WHERE id = ?", m.company_id)
+        this.companies.log(m.company_id, `${m.channel === 'email' ? 'E-posta' : 'WhatsApp'} gönderildi`, m.recipient_key, 'system', 'message', id)
+      } else {
+        this.db.run("UPDATE outreach_drafts SET status = 'approved' WHERE id = ?", m.draft_id)
+        this.companies.log(m.company_id, 'Test gönderimi yapıldı (gerçek alıcıya gitmedi)', undefined, 'system', 'message', id)
+      }
+    } catch (e) {
+      const msg = (e as Error).message
+      log('warn', `Gönderim başarısız (#${id}): ${msg}`)
+      this.db.run("UPDATE outreach_messages SET status = 'failed', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", msg.slice(0, 1000), id)
+      if (/sınırına ulaşıldı|limit/i.test(msg)) this.pauseQueue(m.channel)
+    }
+  }
+
+  /** Başarısız bir mesajı (durumu kesin olarak "gönderilmedi" ise) yeniden kuyruğa alır. */
+  retry(id: number) {
+    const m = this.db.get<{ status: string; error: string | null }>('SELECT status, error FROM outreach_messages WHERE id = ?', id)
+    if (!m || !['failed', 'blocked'].includes(m.status)) throw new Error('Yalnızca başarısız mesajlar yeniden denenebilir')
+    if (/Durum belirsiz/.test(m.error ?? '')) throw new Error('Bu mesajın durumu belirsiz (alıcıya ulaşmış olabilir). Tekrar göndermek için önce alıcıyla teyit edin ve yeni bir taslak oluşturun.')
+    this.db.run("UPDATE outreach_messages SET status = 'queued', error = NULL WHERE id = ?", id)
+    this.emitChange('outreach')
+  }
+
+  /** Manuel WhatsApp modu: sıradaki mesajı kullanıcının WhatsApp uygulamasında hazır açar; gönderme kullanıcıdadır. */
+  async openNextManual(): Promise<{ id: number; company: string } | null> {
+    const m = this.db.get<{ id: number; company_id: number; draft_id: number | null; recipient_key: string; body: string; test_mode: number }>("SELECT * FROM outreach_messages WHERE channel = 'whatsapp' AND status = 'queued' ORDER BY id LIMIT 1")
+    if (!m) return null
+    if (m.draft_id) {
+      const el = this.eligibilityFor(m.draft_id)
+      const blocking = el.reasons.filter((r) => !/daha önce mesaj gönderilmiş/.test(r) && !/henüz onaylanmadı/.test(r) && !/hesabı yapılandırılmamış/.test(r))
+      if (blocking.length) {
+        this.db.run("UPDATE outreach_messages SET status = 'blocked', error = ? WHERE id = ?", blocking.join(' '), m.id)
+        return this.openNextManual()
+      }
+    }
+    const s = this.settings.get()
+    const to = m.test_mode || s.outreach.testMode ? phoneKey(s.outreach.testRecipientPhone) : m.recipient_key
+    await shell.openExternal(clickToChatUrl(to, m.body))
+    this.db.run("UPDATE outreach_messages SET status = 'manual_opened', sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", m.id)
+    const name = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
+    this.companies.log(m.company_id, 'WhatsApp mesajı manuel gönderim için açıldı', 'Gönderim kullanıcının onayına bağlı', 'user', 'message', m.id)
+    this.emitChange('outreach')
+    return { id: m.id, company: name }
+  }
+
+  markManual(id: number, sent: boolean) {
+    const m = this.db.get<{ company_id: number; draft_id: number | null; status: string }>('SELECT company_id, draft_id, status FROM outreach_messages WHERE id = ?', id)
+    if (!m || m.status !== 'manual_opened') throw new Error('Bu mesaj manuel gönderim bekleyen durumda değil')
+    if (sent) {
+      this.db.run("UPDATE outreach_messages SET status = 'sent', status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", id)
+      if (m.draft_id) this.db.run("UPDATE outreach_drafts SET status = 'sent' WHERE id = ?", m.draft_id)
+      this.db.run("INSERT INTO communication_events(company_id, message_id, channel, direction, kind, summary) VALUES (?,?, 'whatsapp', 'out', 'sent', 'Manuel gönderildi (kullanıcı onayı)')", m.company_id, id)
+      this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('approved','review','analyzed','new') THEN 'waiting_reply' ELSE stage_key END WHERE id = ?", m.company_id)
+    } else this.db.run("UPDATE outreach_messages SET status = 'cancelled', error = 'Kullanıcı göndermedi' WHERE id = ?", id)
+    this.emitChange('outreach')
+  }
+
+  listMessages(f: { channel?: string; status?: string; limit?: number }) {
+    const w = ['1=1']
+    const p: (string | number)[] = []
+    if (f.channel) w.push('m.channel = ?'), p.push(f.channel)
+    if (f.status) w.push('m.status = ?'), p.push(f.status)
+    return this.db.all(`SELECT m.*, c.name AS company_name FROM outreach_messages m JOIN companies c ON c.id = m.company_id WHERE ${w.join(' AND ')} ORDER BY m.id DESC LIMIT ?`, ...p, f.limit ?? 500)
+  }
+
+  queueSummary() {
+    const by = (ch: Channel) => Object.fromEntries(this.db.all<{ status: string; n: number }>('SELECT status, COUNT(*) AS n FROM outreach_messages WHERE channel = ? GROUP BY status', ch).map((r) => [r.status, r.n]))
+    return { email: { state: this.queueState('email'), counts: by('email'), sentToday: this.sentToday('email') }, whatsapp: { state: this.queueState('whatsapp'), counts: by('whatsapp'), sentToday: this.sentToday('whatsapp'), mode: this.whatsappAccount()?.mode ?? null } }
+  }
+
+  // ---------------- Yanıt takibi (IMAP) ----------------
+  async syncReplies(): Promise<{ checked: number; matched: number; optOuts: number }> {
+    const acc = this.db.get<EmailAccount & { last_imap_uid: number | null }>("SELECT * FROM email_accounts WHERE status = 'ok' AND imap_host IS NOT NULL ORDER BY id LIMIT 1")
+    if (!acc) throw new Error('IMAP bilgisi tanımlı, doğrulanmış bir e-posta hesabı yok')
+    const pass = this.secrets.get(`email_pass:${acc.id}`)
+    if (!pass) throw new Error('E-posta parolası kayıtlı değil')
+    const { mails, lastUid } = await fetchInbox(acc, pass, acc.last_imap_uid)
+    let matched = 0
+    let optOuts = 0
+    for (const mail of mails) {
+      const key = emailKey(mail.from)
+      if (!key || key === acc.from_email.toLowerCase()) continue
+      let companyId = this.db.get<{ company_id: number }>("SELECT company_id FROM company_contacts WHERE type = 'email' AND value_key = ?", key)?.company_id
+      if (!companyId) {
+        const dom = key.split('@')[1]
+        companyId = this.db.get<{ id: number }>('SELECT id FROM companies WHERE domain = ?', dom)?.id
+      }
+      if (!companyId) continue
+      if (!this.db.get("SELECT 1 FROM outreach_messages WHERE company_id = ? AND channel = 'email' AND status IN ('sent','delivered','read')", companyId)) continue
+      const ins = this.db.run("INSERT OR IGNORE INTO communication_events(company_id, channel, direction, kind, summary, body, external_id, occurred_at) VALUES (?, 'email', 'in', 'reply', ?, ?, ?, ?)", companyId, mail.subject.slice(0, 200), mail.text.slice(0, 4000), mail.messageId ?? `uid:${acc.id}:${mail.uid}`, mail.date)
+      if (!ins.changes) continue
+      matched++
+      this.companies.log(companyId, 'E-posta yanıtı alındı', mail.subject, 'system')
+      if (isOptOutReply(`${mail.subject} ${mail.text}`)) {
+        optOuts++
+        this.companies.suppressCompany(companyId, `Yanıtta iletişim reddi: "${mail.subject.slice(0, 80)}"`, 'reply')
+      } else {
+        this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('contacted','waiting_reply','approved') THEN 'contacted' ELSE stage_key END WHERE id = ?", companyId)
+        this.db.run("INSERT INTO tasks(title, company_id, kind, priority, due_at) VALUES (?, ?, 'reply_review', 'high', date('now','+1 day'))", 'Müşterinin yanıtını değerlendir', companyId)
+      }
+    }
+    if (lastUid != null) this.db.run("UPDATE email_accounts SET last_imap_uid = ?, last_check_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", lastUid, acc.id)
+    this.emitChange('outreach')
+    return { checked: mails.length, matched, optOuts }
+  }
+}
