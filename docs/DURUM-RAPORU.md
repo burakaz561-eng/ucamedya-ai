@@ -2,6 +2,21 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.2.2 — Kurumsal mesaj şablonları ve otomatik alıcı seçimi
+
+| Özellik | Durum |
+|---|---|
+| Kurumsal "UCA Radar" metni varsayılan şablon (e-posta konusu, e-posta, WhatsApp) | ✅ birim testli |
+| Ayarlar → Mesaj gönderimi → Mesaj şablonları: düzenleme, örnek önizleme, varsayılana dönme | ✅ (paketli uygulamada derlendi; ekranda kullanıcı denemesi bekliyor) |
+| Gönderilmemiş taslakları yeni şablonla yenileme ("Kaydet ve gönderilmemiş taslakları yenile") | ✅ kod; 🟡 gerçek verilerle denenmedi |
+| Mesajda kısa şirket adı ("RAMADİ YAPI İNŞAAT \| Gebze…" → "RAMADİ YAPI İNŞAAT") | ✅ birim testli |
+| Alıcı seçimi — WhatsApp: sitedeki wa.me bağlantısı → iletişim sayfasındaki cep → sitedeki cep → Google kaydındaki cep → sabit hat | ✅ birim testli |
+| Alıcı seçimi — e-posta: şirketin kendi alan adındaki adres (iletişim sayfası önce) → diğer kurumsal → ücretsiz/kişisel | ✅ birim testli |
+| Aynı numara hem Google'da hem sitede bulunursa kaynak "web sitesi" olarak güncellenir | ✅ |
+| Onay penceresinde şirketin gerçek numarası/adresi + kaynağı; test modunda "mesajın gideceği yer: test alıcınız" | ✅ kod; 🟡 canlı ekranda kullanıcı denemesi bekliyor |
+
+Not: Şirketin sitesinde hiç iletişim bilgisi yoksa ve Google kaydında yalnızca sabit hat varsa, WhatsApp için sabit hat seçilir; sabit hatta WhatsApp olmayabilir. Gerçek gönderim hâlâ hiç yapılmadı, test modu açık.
+
 ## 0.2.1 — Webmail (Roundcube) ve WhatsApp masaüstü uygulaması (gerçek hesaplarla test edildi)
 
 | Özellik | Durum | Not |

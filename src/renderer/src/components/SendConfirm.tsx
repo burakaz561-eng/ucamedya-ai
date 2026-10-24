@@ -20,6 +20,8 @@ interface Req {
   preview: string | null
   testMode: boolean
   manualSend?: boolean
+  realRecipient?: string
+  recipientSource?: string | null
 }
 
 export function SendConfirm() {
@@ -66,10 +68,11 @@ export function SendConfirm() {
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 16 }}>
         <div className="col" style={{ gap: 10 }}>
           {cur.manualSend && <Callout tone="brand"><b>WhatsApp uygulamanızda sohbet açıldı ve mesaj yazıldı.</b> Alıcıyı kontrol edip WhatsApp’ta <b>Enter</b> ile gönderin, sonra burada “WhatsApp’ta gönderdim” deyin. Göndermezseniz “Göndermedim, atla”.</Callout>}
-          {cur.testMode && <Callout tone="warn">Test modu açık: mesaj şirkete değil, test alıcınıza gider.</Callout>}
+          {cur.testMode && <Callout tone="warn"><b>Test modu açık:</b> mesaj şirkete ({cur.channel === 'whatsapp' ? `+${cur.realRecipient}` : cur.realRecipient}) değil, sizin test {cur.channel === 'whatsapp' ? 'numaranıza' : 'adresinize'} gider. Gerçek gönderim için Ayarlar → Mesaj gönderimi'nden test modunu kapatın.</Callout>}
           <div className="kv">
             <div>Şirket</div><div><b>{cur.company}</b></div>
-            <div>Alıcı</div><div><b>{cur.channel === 'whatsapp' ? `+${cur.recipient}` : cur.recipient}</b></div>
+            <div>{cur.testMode ? 'Şirketin numarası' : 'Alıcı'}</div><div><b>{cur.channel === 'whatsapp' ? `+${cur.realRecipient ?? cur.recipient}` : cur.realRecipient ?? cur.recipient}</b>{cur.recipientSource && <div className="tiny muted">Kaynak: {cur.recipientSource}</div>}</div>
+            {cur.testMode && <><div>Mesajın gideceği yer</div><div><b>{cur.channel === 'whatsapp' ? `+${cur.recipient}` : cur.recipient}</b> <span className="tiny muted">(test alıcınız)</span></div></>}
             <div>Doğrulama</div>
             <div>{cur.recipientVerified ? <Badge tone="success"><CheckCircle2 size={12} /> Alıcı doğrulandı</Badge> : <Badge tone="warning"><AlertTriangle size={12} /> Gözle kontrol edin</Badge>}</div>
           </div>

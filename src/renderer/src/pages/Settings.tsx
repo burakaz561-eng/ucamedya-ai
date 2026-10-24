@@ -10,6 +10,7 @@ import { FINDING_CATEGORIES } from '@shared/constants'
 import { fmtBytes, fmtDate } from '../lib/format'
 import type { PageProps } from '../lib/page'
 import type { AppSettings } from '@shared/types'
+import { DEFAULT_TEMPLATES, TEMPLATE_PLACEHOLDERS, renderTemplate } from '@shared/message-templates'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Tab = 'brand' | 'look' | 'analysis' | 'scoring' | 'stages' | 'outreach' | 'backup' | 'security' | 'about'
@@ -126,6 +127,7 @@ export default function Settings({ settings, setSettings, params }: PageProps) {
             <Field label="Ret bilgisi metni"><textarea className="textarea" style={{ minHeight: 70 }} value={s.outreach.optOutText} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, optOutText: e.target.value } })} /></Field>
             <label className="check"><input type="checkbox" checked={s.outreach.allowPersonalContacts} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, allowPersonalContacts: e.target.checked } })} /><div><b>Kişisel iletişim bilgilerine gönderime izin ver</b><div className="small muted">Varsayılan kapalı. Bireysel e-posta/telefonlara ticari ileti göndermek açık rıza gerektirebilir.</div></div></label>
             <label className="check"><input type="checkbox" checked={false} disabled onChange={() => undefined} /><div><b>E-posta açılma takibi</b> <Badge>Bu sürümde yok</Badge><div className="small muted">Takip pikseli kullanılmaz (gizlilik/mevzuat ve güvenilirlik nedeniyle).</div></div></label>
+            <TemplatesEditor s={s} setS={setS} />
             <Callout tone="warn">Uygulama hukuki uygunluğu otomatik olarak garanti etmez. 6563 sayılı Kanun (ticari elektronik ileti), İYS kayıt yükümlülükleri ve KVKK kapsamındaki değerlendirmeler yoruma açıktır; toplu iletişimden önce hukuki görüş almanız önerilir.</Callout>
             <div><Btn variant="primary" icon={<Save />} onClick={() => save({ outreach: s.outreach })}>Kaydet</Btn></div>
           </div>
@@ -239,5 +241,35 @@ function About() {
         <div>Kısayollar</div><div className="small">Ctrl+K arama · Ctrl+B menü · Ctrl+N yeni araştırma · Alt+1…9 sayfalar · Esc pencereyi kapat</div>
       </div>
     </Card>
+  )
+}
+
+const SAMPLE = { company: 'Ramadi Yapı İnşaat | Gebze Fabrika Tadilatı', sector: 'İnşaat', city: 'Kocaeli', website: 'https://ornek.com.tr', findings: ['Sitede SSL sertifikası yok', 'Mobil uyumluluk zayıf'], brandName: 'Uca Medya', brandWeb: 'ucamedya.com.tr' }
+
+function TemplatesEditor({ s, setS }: { s: AppSettings; setS: (v: AppSettings) => void }) {
+  const { run } = useAction()
+  const [prev, setPrev] = useState<'email' | 'whatsapp'>('email')
+  const t = s.outreach.templates
+  const set = (patch: Partial<AppSettings['outreach']['templates']>) => setS({ ...s, outreach: { ...s.outreach, templates: { ...t, ...patch } } })
+  const vars = { ...SAMPLE, brandName: s.brand.name || SAMPLE.brandName, brandWeb: s.brand.website || SAMPLE.brandWeb }
+  return (
+    <div className="col" style={{ gap: 12, borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+      <div><b>Mesaj şablonları</b><div className="small muted">Yapay zekâ kapalıyken taslaklar bu metinlerden üretilir; açıkken yapay zekâ bu şablonun yapısını ve tonunu korur. E-postada imza, her iki kanalda ret bilgisi otomatik eklenir.</div></div>
+      <Field label="E-posta konusu"><input className="input" value={t.emailSubject} onChange={(e) => set({ emailSubject: e.target.value })} /></Field>
+      <Field label="E-posta metni"><textarea className="textarea" style={{ minHeight: 220 }} value={t.emailBody} onChange={(e) => set({ emailBody: e.target.value })} /></Field>
+      <Field label="WhatsApp metni"><textarea className="textarea" style={{ minHeight: 170 }} value={t.whatsappBody} onChange={(e) => set({ whatsappBody: e.target.value })} /></Field>
+      <div className="small muted">Kullanılabilir alanlar: {TEMPLATE_PLACEHOLDERS.map((p) => <span key={p.key} title={p.label} style={{ marginRight: 8 }}><code>{p.key}</code></span>)}</div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <Btn size="sm" variant={prev === 'email' ? 'primary' : 'ghost'} onClick={() => setPrev('email')}>E-posta önizleme</Btn>
+        <Btn size="sm" variant={prev === 'whatsapp' ? 'primary' : 'ghost'} onClick={() => setPrev('whatsapp')}>WhatsApp önizleme</Btn>
+        <Btn size="sm" variant="ghost" onClick={() => set({ ...DEFAULT_TEMPLATES })}>Varsayılan metne dön</Btn>
+        <Btn size="sm" variant="ghost" onClick={() => run(() => call<AppSettings>('settings:update', { outreach: s.outreach }).then(() => call<number>('drafts:regenerate')), (n) => `${n} gönderilmemiş taslak yeni şablonla yenilendi`)}>Kaydet ve gönderilmemiş taslakları yenile</Btn>
+      </div>
+      <div className="card" style={{ whiteSpace: 'pre-wrap', fontSize: 13, padding: 14, background: 'var(--bg-2, transparent)' }}>
+        {prev === 'email' && <div style={{ marginBottom: 8 }}><b>Konu:</b> {renderTemplate(t.emailSubject, vars)}</div>}
+        {renderTemplate(prev === 'email' ? t.emailBody : t.whatsappBody, vars)}
+        <div className="tiny muted" style={{ marginTop: 8 }}>Örnek şirket: "{SAMPLE.company}" (sektör: {SAMPLE.sector})</div>
+      </div>
+    </div>
   )
 }

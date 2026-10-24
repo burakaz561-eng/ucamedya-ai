@@ -276,6 +276,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'drafts:rewrite': (p) => s.outreach.rewrite(id.parse(p?.id), str(40).parse(p?.action)),
     'drafts:setStatus': (p) => s.outreach.setDraftStatus(ids.parse(p?.ids), z.enum(['approved', 'draft', 'rejected']).parse(p?.status)),
     'drafts:eligibility': (p) => s.outreach.eligibilityFor(id.parse(p?.id)),
+    'drafts:regenerate': () => s.outreach.regenerateDrafts(),
     'drafts:delete': (p) => s.db.run("DELETE FROM outreach_drafts WHERE id = ? AND status IN ('draft','rejected','approved')", id.parse(p?.id)),
     'outreach:enqueue': (p) => s.outreach.enqueue(ids.parse(p?.ids), optStr(80).parse(p?.campaign) ?? null),
     'outreach:queue': () => s.outreach.queueSummary(),

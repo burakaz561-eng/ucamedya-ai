@@ -3,6 +3,7 @@
 import type { Db } from '../database/db'
 import { DEFAULT_CATEGORY_WEIGHTS, DEFAULT_SCORING_WEIGHTS } from '@shared/constants'
 import type { AppSettings } from '@shared/types'
+import { DEFAULT_TEMPLATES } from '@shared/message-templates'
 
 export const DEFAULT_SETTINGS: AppSettings = {
   setupCompleted: false,
@@ -43,7 +44,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sendMode: 'confirm',
     webDailyLimitEmail: 30,
     webDailyLimitWhatsapp: 20,
-    attachReport: false
+    attachReport: false,
+    templates: { ...DEFAULT_TEMPLATES }
   },
   backup: { auto: true, intervalHours: 24, keep: 10, dir: '' },
   security: { lockEnabled: false, lockAfterMinutes: 0 },

@@ -13,6 +13,7 @@ import { shell } from 'electron'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
 import type { CompanyService } from '../services/companies'
+import { rankContacts, contactSourceLabel, type ContactRow } from './contact-rank'
 import type { SettingsService } from '../services/settings'
 import type { SecretStore } from '../security/secrets'
 import type { FileStore } from '../files/folders'
@@ -51,6 +52,9 @@ export interface ConfirmRequest {
   testMode: boolean
   /** true: gönderimi kullanıcı WhatsApp uygulamasında kendisi yapar, burada yalnızca sonucu bildirir */
   manualSend?: boolean
+  /** Şirketin gerçek iletişim bilgisi (test modunda mesaj buraya değil test alıcısına gider) */
+  realRecipient?: string
+  recipientSource?: string | null
 }
 
 type Channel = 'email' | 'whatsapp'
@@ -117,7 +121,8 @@ export class OutreachService {
       brand: { name: s.brand.name, website: s.brand.website, email: s.brand.email, phone: s.brand.phone, signature: s.brand.signature, senderName: s.brand.senderName },
       channel,
       tone,
-      optOutLine: s.outreach.includeOptOutLine ? s.outreach.optOutText : null
+      optOutLine: s.outreach.includeOptOutLine ? s.outreach.optOutText : null,
+      templates: s.outreach.templates
     }
   }
 
@@ -152,6 +157,23 @@ export class OutreachService {
     } catch {
       /* dosya yazılamazsa taslak veritabanında kalır */
     }
+  }
+
+  /** Gönderilmemiş (taslak / onaylı) taslakları güncel şablon veya yapay zekâ ile yeniden üretir. */
+  async regenerateDrafts(): Promise<number> {
+    const rows = this.db.all<{ id: number; company_id: number; channel: Channel; tone: string | null }>("SELECT id, company_id, channel, tone FROM outreach_drafts WHERE status IN ('draft','approved')")
+    let n = 0
+    for (const d of rows) {
+      if (this.companies.isSuppressed(d.company_id)) continue
+      const ctx = this.context(d.company_id, d.channel, d.tone ?? 'professional')
+      const ai = this.settings.get().ai.enabled ? this.getAi() : null
+      const out = await aiDraft(ai, ctx)
+      this.db.run("UPDATE outreach_drafts SET subject = ?, body = ?, generator = ?, used_findings = ?, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", out.subject, out.body, out.generator, JSON.stringify(out.usedFindings), d.id)
+      this.writeDraftFile(d.company_id, d.channel, out.subject, out.body)
+      n++
+    }
+    this.emitChange('drafts')
+    return n
   }
 
   updateDraft(id: number, patch: { subject?: string | null; body?: string; tone?: string }) {
@@ -210,13 +232,12 @@ export class OutreachService {
   }
 
   // ---------------- Uygunluk ----------------
-  private recipient(companyId: number, channel: Channel): { key: string; display: string; kind: string } | null {
-    if (channel === 'email') {
-      const r = this.db.get<{ value: string; value_key: string; kind: string }>("SELECT value, value_key, kind FROM company_contacts WHERE company_id = ? AND type = 'email' ORDER BY kind = 'corporate' DESC, verified_at IS NOT NULL DESC, id LIMIT 1", companyId)
-      return r ? { key: r.value_key, display: r.value, kind: r.kind } : null
-    }
-    const r = this.db.get<{ value: string; value_key: string; kind: string }>("SELECT value, value_key, kind FROM company_contacts WHERE company_id = ? AND type IN ('whatsapp','phone') ORDER BY type = 'whatsapp' DESC, id LIMIT 1", companyId)
-    return r ? { key: r.value_key, display: r.value, kind: r.kind } : null
+  /** Şirketin en uygun iletişim bilgisi (sıralama: rankContacts). */
+  recipient(companyId: number, channel: Channel): { key: string; display: string; kind: string; source: string | null } | null {
+    const domain = this.db.get<{ domain: string | null }>('SELECT domain FROM companies WHERE id = ?', companyId)?.domain ?? null
+    const rows = this.db.all<ContactRow>("SELECT type, value, value_key, kind, source_type, source_url, label FROM company_contacts WHERE company_id = ? AND type IN ('email','phone','whatsapp')", companyId)
+    const best = rankContacts(rows, channel, domain)[0]
+    return best ? { key: best.value_key, display: best.value, kind: best.kind, source: contactSourceLabel(best) } : null
   }
 
   private emailAccount(): (EmailAccount & { daily_limit: number; status: string }) | undefined {
@@ -446,7 +467,8 @@ export class OutreachService {
     this.emitChange('outreach')
     const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
       this.pendingConfirm.set(m.id, resolve)
-      this.emitConfirm({ messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'WhatsApp uygulamasında açılan sohbetin bu numaraya ait olduğunu kontrol edin, mesajı Enter ile gönderin.', subject: null, body: m.body, attachment: null, preview: null, testMode, manualSend: true })
+      const rec = this.recipient(m.company_id, 'whatsapp')
+      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'WhatsApp uygulamasında açılan sohbetin bu numaraya ait olduğunu kontrol edin, mesajı Enter ile gönderin.', subject: null, body: m.body, attachment: null, preview: null, testMode, manualSend: true })
     })
     this.emitConfirm({ messageId: m.id, closed: true })
     if (decision === 'send') return 'sent'
@@ -517,7 +539,8 @@ export class OutreachService {
       const preview = await this.web.agent.preview()
       const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
         this.pendingConfirm.set(m.id, resolve)
-        this.emitConfirm({ messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, preview, testMode })
+        const rec = this.recipient(m.company_id, m.channel)
+        this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, preview, testMode })
       })
       this.emitConfirm({ messageId: m.id, closed: true })
       if (decision !== 'send') {
@@ -633,3 +656,4 @@ export class OutreachService {
     return { checked: mails.length, matched, optOuts }
   }
 }
+

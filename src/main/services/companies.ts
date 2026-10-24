@@ -55,7 +55,8 @@ export class CompanyService {
       `INSERT INTO company_contacts(company_id, type, value, value_key, kind, label, source_url, source_type, verified_at)
        VALUES (?,?,?,?,?,?,?,?,?)
        ON CONFLICT(company_id, type, value_key) DO UPDATE SET verified_at = COALESCE(excluded.verified_at, verified_at),
-         source_url = COALESCE(source_url, excluded.source_url)`,
+         source_url = CASE WHEN excluded.source_type = 'website' AND source_type <> 'website' THEN excluded.source_url ELSE COALESCE(source_url, excluded.source_url) END,
+         source_type = CASE WHEN excluded.source_type = 'website' AND source_type IN ('provider','import') THEN 'website' ELSE source_type END`,
       companyId, c.type, c.type === 'email' ? key : c.value.trim(), key, kind, c.label ?? null, c.sourceUrl ?? null, c.sourceType, c.verified ? new Date().toISOString() : null
     )
   }

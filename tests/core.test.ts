@@ -13,6 +13,8 @@ import { evaluate, findPageLinks, ruleSummary } from '../src/main/analysis/rules
 import { computeOpportunity } from '../src/main/research/scoring'
 import { checkEligibility, idempotencyKey, isOptOutReply } from '../src/main/outreach/compliance'
 import { templateDraft } from '../src/main/outreach/drafting'
+import { rankContacts, type ContactRow } from '../src/main/outreach/contact-rank'
+import { DEFAULT_TEMPLATES, renderTemplate, shortCompanyName } from '../src/shared/message-templates'
 import { computeTotals } from '../src/shared/offer-math'
 import { buildQueries } from '../src/main/research/pipeline'
 import { csvToHits } from '../src/main/integrations/search/providers'
@@ -372,5 +374,40 @@ describe('işletme adı temizleme', () => {
   it('emoji ve süs karakterlerini kaldırır', () => {
     expect(cleanBusinessName('🛠️ Maker Mimarlık Renovasyon ☀️ İç Mimari & Proje')).toBe('Maker Mimarlık Renovasyon İç Mimari & Proje')
     expect(cleanBusinessName('★ UG İNŞAAT ★')).toBe('UG İNŞAAT')
+  })
+})
+
+describe('alıcı seçimi ve kurumsal şablon', () => {
+  const row = (o: Partial<ContactRow>): ContactRow => ({ type: 'phone', value: '', value_key: '', kind: 'corporate', source_type: 'provider', source_url: null, label: null, ...o })
+  it('WhatsApp: sitedeki wa.me > iletişim sayfasındaki cep > Google cep > sabit hat', () => {
+    const rows = [
+      row({ value_key: '902166068896', value: '0216 606 88 96' }),
+      row({ value_key: '905321112233', value: '0532 111 22 33' }),
+      row({ value_key: '905339998877', source_type: 'website', source_url: 'https://x.com/iletisim' }),
+      row({ type: 'whatsapp', value_key: '905441234567', source_type: 'website', source_url: 'https://x.com/' })
+    ]
+    expect(rankContacts(rows, 'whatsapp', 'x.com').map((r) => r.value_key)).toEqual(['905441234567', '905339998877', '905321112233', '902166068896'])
+  })
+  it('WhatsApp: e-postalar elenir, "WhatsApp yok" işaretli numara sona düşer', () => {
+    const rows = [row({ type: 'email', value_key: 'info@x.com' }), row({ value_key: '905321112233', label: 'WhatsApp yok' }), row({ value_key: '902121234567' })]
+    expect(rankContacts(rows, 'whatsapp', null).map((r) => r.value_key)).toEqual(['902121234567', '905321112233'])
+  })
+  it('E-posta: şirketin kendi alan adındaki adres önce, ücretsiz adres sonra', () => {
+    const rows = [row({ type: 'email', value_key: 'firma@gmail.com', kind: 'personal' }), row({ type: 'email', value_key: 'info@x.com.tr', source_type: 'website', source_url: 'https://x.com.tr/iletisim' }), row({ value_key: '905321112233' })]
+    expect(rankContacts(rows, 'email', 'x.com.tr').map((r) => r.value_key)).toEqual(['info@x.com.tr', 'firma@gmail.com'])
+  })
+  it('şablon: kısa şirket adı, sektör ifadesi ve büyük harfli cümle başı', () => {
+    expect(shortCompanyName('RAMADİ YAPI İNŞAAT | Gebze Fabrika Tadilatı')).toBe('RAMADİ YAPI İNŞAAT')
+    const v = { company: 'RAMADİ YAPI İNŞAAT | Gebze', sector: 'İnşaat', city: null, website: null, findings: [], brandName: 'Uca Medya', brandWeb: 'ucamedya.com.tr' }
+    const body = renderTemplate(DEFAULT_TEMPLATES.emailBody, v)
+    expect(body).toContain('İnşaat sektöründeki markaların')
+    expect(body).toContain('UCA Radar')
+    expect(renderTemplate(DEFAULT_TEMPLATES.emailSubject, v)).toBe('RAMADİ YAPI İNŞAAT için ücretsiz UCA Radar dijital değerlendirmesi')
+    expect(renderTemplate(DEFAULT_TEMPLATES.whatsappBody, { ...v, sector: null })).toMatch(/^Merhaba,\nFarklı sektörlerdeki/)
+  })
+  it('şablonlu templateDraft imza ve ret satırını ekler', () => {
+    const out = templateDraft({ company: { name: 'Acme | Ana Sayfa', sector: null, city: null, website: null, websiteStatus: 'ok' }, findings: [], services: [], brand: { name: 'Uca Medya', website: 'ucamedya.com.tr', email: 'info@ucamedya.com.tr', phone: '', signature: 'Uca Medya Ekibi' } as any, channel: 'email', tone: 'professional', optOutLine: 'İstemiyorsanız RET yazın.', templates: DEFAULT_TEMPLATES })
+    expect(out.subject).toBe('Acme için ücretsiz UCA Radar dijital değerlendirmesi')
+    expect(out.body).toContain('RET yazın')
   })
 })

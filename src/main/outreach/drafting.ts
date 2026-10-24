@@ -5,6 +5,7 @@
 import type { AiProvider } from '../integrations/ai/ai-client'
 import { parseJson } from '../integrations/ai/ai-client'
 import { MESSAGE_TONES, REWRITE_ACTIONS } from '@shared/constants'
+import { renderTemplate, shortCompanyName, type MessageTemplates } from '@shared/message-templates'
 
 export interface DraftContext {
   company: { name: string; sector: string | null; city: string | null; website: string | null; websiteStatus: string }
@@ -14,6 +15,8 @@ export interface DraftContext {
   channel: 'email' | 'whatsapp'
   tone: string
   optOutLine: string | null
+  /** Kullanıcının düzenlediği kurumsal şablonlar; varsa şablon taslağı bunlardan üretilir */
+  templates?: MessageTemplates | null
 }
 
 export interface DraftOut {
@@ -41,7 +44,7 @@ function factsBlock(ctx: DraftContext): string {
   const list = f.length
     ? f.map((x) => `- [${x.code}] (${x.severity}, ${x.certainty}) ${x.title}${x.evidence ? ` — Kanıt: ${x.evidence.slice(0, 220)}` : ''}`).join('\n')
     : '(Kayıtlı bulgu yok.)'
-  return `ŞİRKET: ${ctx.company.name}
+  return `ŞİRKET: ${shortCompanyName(ctx.company.name)}
 SEKTÖR: ${ctx.company.sector ?? 'belirtilmedi'}
 ŞEHİR: ${ctx.company.city ?? 'belirtilmedi'}
 WEB SİTESİ: ${ctx.company.website ?? 'yok'} (durum: ${ctx.company.websiteStatus})
@@ -72,7 +75,15 @@ function sanitizeUsed(used: string[], ctx: DraftContext) {
 }
 
 export function templateDraft(ctx: DraftContext): DraftOut {
-  const name = ctx.company.name
+  if (ctx.templates) {
+    const top = ctx.findings.filter((f) => f.severity === 'high' || f.severity === 'medium').slice(0, 2)
+    const vars = { company: ctx.company.name, sector: ctx.company.sector, city: ctx.company.city, website: ctx.company.website, findings: top.map((f) => f.title), brandName: ctx.brand.name, brandWeb: ctx.brand.website }
+    const t = ctx.templates
+    const usesFindings = /\{bulgu/.test(ctx.channel === 'email' ? t.emailBody : t.whatsappBody)
+    if (ctx.channel === 'whatsapp') return { subject: null, body: finalize(renderTemplate(t.whatsappBody, vars), ctx), usedFindings: usesFindings ? top.map((f) => f.code) : [], generator: 'template' }
+    return { subject: renderTemplate(t.emailSubject, vars), body: finalize(renderTemplate(t.emailBody, vars), ctx), usedFindings: usesFindings ? top.map((f) => f.code) : [], generator: 'template' }
+  }
+  const name = shortCompanyName(ctx.company.name)
   const top = ctx.findings.filter((f) => f.severity === 'high' || f.severity === 'medium').slice(0, 2)
   const pts = top.map((f) => f.title.charAt(0).toLocaleLowerCase('tr-TR') + f.title.slice(1))
   const noSite = ctx.company.websiteStatus === 'none' || !ctx.company.website
@@ -98,7 +109,7 @@ export async function aiDraft(ai: AiProvider | null, ctx: DraftContext): Promise
   try {
     const out = await ai.complete({
       system: SYSTEM,
-      user: `${factsBlock(ctx)}\n\nTON: ${toneLabel(ctx.tone)}\n${channelRule}\n\nBu şirkete ilk temas mesajını yaz. JSON olarak döndür: {"subject": "...", "body": "...", "usedFindings": ["kod", ...]}`,
+      user: `${factsBlock(ctx)}\n\nTON: ${toneLabel(ctx.tone)}\n${channelRule}\n${ctx.templates ? `\nKURUMSAL ŞABLON (yapısını, tonunu ve UCA Radar teklifini koru; şirkete göre yalnızca küçük kişiselleştirme yap):\n${ctx.channel === 'email' ? ctx.templates.emailBody : ctx.templates.whatsappBody}\n` : ''}\nBu şirkete ilk temas mesajını yaz. JSON olarak döndür: {"subject": "...", "body": "...", "usedFindings": ["kod", ...]}`,
       jsonSchema: SCHEMA,
       effort: 'medium',
       maxTokens: 8000

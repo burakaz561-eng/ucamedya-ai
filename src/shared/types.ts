@@ -47,6 +47,7 @@ export interface AppSettings {
     webDailyLimitEmail: number
     webDailyLimitWhatsapp: number
     attachReport: boolean
+    templates: { emailSubject: string; emailBody: string; whatsappBody: string }
   }
   backup: { auto: boolean; intervalHours: number; keep: number; dir: string }
   security: { lockEnabled: boolean; lockAfterMinutes: number }
