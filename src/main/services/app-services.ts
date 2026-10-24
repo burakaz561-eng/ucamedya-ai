@@ -17,6 +17,7 @@ import { AgentBrowser, detectBrowsers, type AgentEvent } from '../automation/age
 import { GoogleBrowserSearch } from '../automation/google-browser'
 import { WhatsAppWeb } from '../automation/whatsapp-web'
 import { GmailWeb } from '../automation/gmail-web'
+import { RoundcubeWeb } from '../automation/roundcube-web'
 import { crawlContacts } from '../research/contact-crawler'
 import { log } from '../logger'
 import { GooglePlacesProvider, SerpApiProvider, BraveProvider, type SearchProvider } from '../integrations/search/providers'
@@ -56,6 +57,7 @@ export class AppServices {
   readonly google: GoogleBrowserSearch
   readonly wa: WhatsAppWeb
   readonly gmail: GmailWeb
+  readonly rc: RoundcubeWeb
   private aiCache: { key: string; p: AiProvider } | null = null
 
   constructor(
@@ -77,6 +79,7 @@ export class AppServices {
     this.google = new GoogleBrowserSearch(this.agent)
     this.wa = new WhatsAppWeb(this.agent)
     this.gmail = new GmailWeb(this.agent)
+    this.rc = new RoundcubeWeb(this.agent, () => this.settings.get().outreach.webmailUrl)
     this.analysis = new AnalysisService(this.db, this.files, this.companies, this.settings, new SiteAnalyzer(this.http), () => this.pagespeed(), () => this.ai(), change)
     this.jobs = new JobEngine(this.db, () => this.settings.get().analysis.concurrency + 1, (ev: JobEvent) => this.emit('job', ev))
     this.outreach = new OutreachService(this.db, this.companies, this.settings, this.secrets, this.files, () => this.ai(), change)
@@ -99,7 +102,7 @@ export class AppServices {
       }
     )
     this.outreach.attachWeb(
-      { agent: this.agent, wa: this.wa, gmail: this.gmail, ensureStarted: () => this.ensureAgent(), available: () => detectBrowsers().length > 0 },
+      { agent: this.agent, wa: this.wa, gmail: this.gmail, rc: this.rc, ensureStarted: () => this.ensureAgent(), available: () => detectBrowsers().length > 0 },
       (r) => this.emit('outreach-confirm', r)
     )
     this.registerJobs()

@@ -168,6 +168,11 @@ export async function whatsappSendTemplate(phoneNumberId: string, token: string,
   return id
 }
 
+/** Bilgisayarda kurulu WhatsApp / WhatsApp Business uygulamasında sohbeti açar ve mesajı kutuya yazar (resmî whatsapp:// bağlantısı). */
+export function whatsappDesktopUrl(phoneKey: string, text: string) {
+  return `whatsapp://send?phone=${phoneKey}&text=${encodeURIComponent(text)}`
+}
+
 /** Resmî "tıkla-sohbet" bağlantısı: mesaj kullanıcının WhatsApp uygulamasında hazır açılır, gönder tuşuna kullanıcı basar. */
 export function clickToChatUrl(phoneKey: string, text: string) {
   return `https://wa.me/${phoneKey}?text=${encodeURIComponent(text)}`

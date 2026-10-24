@@ -301,18 +301,21 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'agent:preview': () => s.agent.preview(),
     'agent:answer': (p) => s.agent.answerUser(z.boolean().parse(p?.ok)),
     'agent:openLogin': async (p) => {
-      const svc = z.enum(['google', 'gmail', 'whatsapp']).parse(p?.service)
+      const svc = z.enum(['google', 'gmail', 'whatsapp', 'webmail']).parse(p?.service)
       await s.ensureAgent()
       const role = svc === 'whatsapp' ? 'whatsapp' : svc === 'gmail' ? 'gmail' : 'site'
       const page = await s.agent.page(role)
       s.agent.touch(page)
-      await page.goto(svc === 'whatsapp' ? 'https://web.whatsapp.com/' : svc === 'gmail' ? 'https://mail.google.com/mail/u/0/' : 'https://accounts.google.com/', { waitUntil: 'domcontentloaded' })
+      const wm = s.settings.get().outreach.webmailUrl
+      if (svc === 'webmail' && !wm) throw new Error('Önce Ayarlar → Mesaj gönderimi bölümüne webmail adresinizi girin (ör. https://ucamedya.com.tr/webmail/).')
+      await page.goto(svc === 'whatsapp' ? 'https://web.whatsapp.com/' : svc === 'gmail' ? 'https://mail.google.com/mail/u/0/' : svc === 'webmail' ? wm : 'https://accounts.google.com/', { waitUntil: 'domcontentloaded' })
       await page.bringToFront()
       s.agent.report({ state: 'needs_user', step: svc === 'whatsapp' ? 'WhatsApp Web açıldı: QR kodu telefonunuzla taratın' : 'Google giriş sayfası açıldı: hesabınıza kendiniz giriş yapın' })
     },
     'agent:checkSessions': async () => {
       await s.ensureAgent()
-      const gm = await s.gmail.status().catch(() => ({ loggedIn: false, account: null }))
+      const useWebmail = s.settings.get().outreach.emailChannel === 'webmail'
+      const gm = useWebmail ? await s.rc.status().catch(() => ({ loggedIn: false, account: null })) : await s.gmail.status().catch(() => ({ loggedIn: false, account: null }))
       const wa = await s.agent.run(() => s.wa.status()).catch(() => 'unknown')
       const google = await s.agent.run(async () => {
         const page = await s.agent.page('site')
@@ -320,7 +323,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
         return /myaccount\.google\.com/.test(page.url()) && !/signin|ServiceLogin/.test(page.url())
       }).catch(() => false)
       s.agent.report({ state: 'ready', step: 'Oturumlar kontrol edildi' })
-      return { google, gmail: gm.loggedIn, gmailAccount: gm.account, whatsapp: wa === 'logged_in', whatsappState: wa }
+      return { google, gmail: gm.loggedIn, gmailAccount: gm.account, mailKind: useWebmail ? 'webmail' : 'gmail', whatsapp: wa === 'logged_in', whatsappState: wa }
     },
     'agent:testSearch': async (p) => {
       await s.ensureAgent()
@@ -329,18 +332,23 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     },
     'agent:testGmailDraft': async (p) => {
       await s.ensureAgent()
-      await s.gmail.ensureLoggedIn()
-      const st = await s.gmail.status()
-      const to = emailKey(String(p?.to ?? '')) || st.account
+      const mail = s.settings.get().outreach.emailChannel === 'webmail' ? s.rc : s.gmail
+      await mail.ensureLoggedIn()
+      const st = await mail.status()
+      const to = emailKey(String(p?.to ?? '')) || emailKey(st.account ?? '') || emailKey(s.settings.get().brand.email)
       if (!to) throw new Error('Test taslağı için alıcı e-posta adresi gerekli.')
-      const r = await s.gmail.prepare({ to, subject: 'UcaMedya AI — test taslağı', body: 'Bu e-posta UcaMedya AI kurulum testinde oluşturuldu ve GÖNDERİLMEDİ. Taslaklar klasöründen silebilirsiniz.' })
+      const r = await mail.prepare({ to, subject: 'UcaMedya AI — test taslağı', body: 'Bu e-posta UcaMedya AI kurulum testinde oluşturuldu ve GÖNDERİLMEDİ. Taslaklar klasöründen silebilirsiniz.' })
       if (!r.ok) throw new Error(r.reason)
-      await s.gmail.saveDraft()
-      return { ok: true, message: `Gmail taslağı oluşturuldu (alıcı: ${to}) ve gönderilmeden Taslaklar'a kaydedildi.` }
+      await mail.saveDraft()
+      return { ok: true, message: `E-posta taslağı oluşturuldu (alıcı: ${to}) ve gönderilmeden Taslaklar'a kaydedildi.` }
     },
     'agent:testWhatsapp': async (p) => {
       const ph = phoneKey(str(40).parse(p?.phone ?? ''))
       if (!ph) throw new Error('Geçerli bir telefon numarası girin (kendi numaranız önerilir).')
+      if (s.settings.get().outreach.whatsappChannel === 'desktop') {
+        await shell.openExternal(`whatsapp://send?phone=${ph}&text=${encodeURIComponent('UcaMedya AI test mesajı — lütfen GÖNDERMEYİN.')}`)
+        return { ok: true, message: 'WhatsApp masaüstü uygulamasında sohbet açılmış ve test metni yazılmış olmalı. Göndermeyin; metni silebilirsiniz. Açılmadıysa WhatsApp uygulamasının kurulu ve oturumunun açık olduğunu kontrol edin.' }
+      }
       await s.ensureAgent()
       await s.wa.ensureLoggedIn()
       const r = await s.wa.prepare(ph, 'UcaMedya AI test mesajı — gönderilmedi.')

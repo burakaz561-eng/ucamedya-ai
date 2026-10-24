@@ -40,8 +40,9 @@ export interface AppSettings {
     optOutText: string
     openTracking: boolean
     allowPersonalContacts: boolean
-    emailChannel: 'gmail_web' | 'smtp'
-    whatsappChannel: 'web' | 'cloud_api' | 'click_to_chat'
+    emailChannel: 'webmail' | 'gmail_web' | 'smtp'
+    webmailUrl: string
+    whatsappChannel: 'desktop' | 'web' | 'cloud_api' | 'click_to_chat'
     sendMode: 'draft' | 'confirm' | 'queue'
     webDailyLimitEmail: number
     webDailyLimitWhatsapp: number

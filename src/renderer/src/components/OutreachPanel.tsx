@@ -24,7 +24,7 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
   const { go, openCompany } = useNav()
   const qs = q?.[channel]
   const manual = channel === 'whatsapp' && qs?.mode === 'click_to_chat'
-  const web = channel === 'email' ? q?.emailTransport === 'gmail_web' : qs?.mode === 'whatsapp_web'
+  const web = channel === 'email' ? ['gmail_web', 'webmail'].includes(q?.emailTransport) : ['whatsapp_web', 'whatsapp_desktop'].includes(qs?.mode)
   const modeLabel = q?.sendMode === 'draft' ? 'Taslak modu: mesajlar hazırlanır, gönderilmez' : q?.sendMode === 'confirm' ? 'Onaylı gönderim: her mesaj için önizleme ve onay' : 'Onaylanmış kuyruk: sırayla gönderilir, sorun olursa durur'
   const ids = [...sel]
   const selected = (drafts ?? []).filter((d) => sel.has(d.id))
@@ -51,7 +51,7 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
   return (
     <div className="col" style={{ gap: 14 }}>
       {testMode ? <Callout tone="warn"><b>Test modu açık.</b> Tüm gönderimler Ayarlar'daki test alıcısına yönlendirilir; hiçbir şirkete mesaj gitmez.</Callout> : <Callout tone="brand"><b>Canlı mod.</b> Onayladığınız ve kuyruğu başlattığınız mesajlar gerçek alıcılara gider.</Callout>}
-      {web && <Callout tone="info">{channel === 'email' ? 'Gmail (tarayıcı)' : 'WhatsApp Web (tarayıcı)'} · <b>{modeLabel}</b>. Gönderim sırasında tarayıcıyı Canlı Kontrol Merkezi'nden izleyebilirsiniz.</Callout>}
+      {web && <Callout tone="info">{channel === 'email' ? (q?.emailTransport === 'webmail' ? 'Webmail (tarayıcı)' : 'Gmail (tarayıcı)') : qs?.mode === 'whatsapp_desktop' ? 'WhatsApp masaüstü uygulaması — gönderme sizde' : 'WhatsApp Web (tarayıcı)'} · <b>{modeLabel}</b>. Gönderim sırasında tarayıcıyı Canlı Kontrol Merkezi'nden izleyebilirsiniz.</Callout>}
       <Card>
         <div className="row wrap" style={{ gap: 8 }}>
           <Btn icon={<Sparkles />} disabled={!sel.size} title="Seçili şirketler için yeni taslak üretir" onClick={() => run(() => call('drafts:createBulk', { companyIds: [...new Set(selected.map((d) => d.company_id))], channels: [channel], tone: 'professional' }), 'Taslaklar hazırlanıyor')}>Taslakları oluştur</Btn>

@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     openTracking: false,
     allowPersonalContacts: false,
     emailChannel: 'gmail_web',
+    webmailUrl: '',
     whatsappChannel: 'web',
     sendMode: 'confirm',
     webDailyLimitEmail: 30,

@@ -25,10 +25,11 @@ export default function EmailPage({ settings }: PageProps) {
           <Btn variant="primary" icon={<Plus />} onClick={() => setEdit({})}>Hesap ekle</Btn>
         </div>
       </div>
+      {settings.outreach.emailChannel === 'webmail' ? <Callout tone="brand">E-postalar <b>Webmail (Roundcube) üzerinden, tarayıcıda</b> hazırlanır ve gönderilir: {settings.outreach.webmailUrl || 'adres Ayarlar’da girilmeli'}. Oturumu Canlı Kontrol Merkezi’nden kontrol edebilirsiniz.</Callout> : null}
       {settings.outreach.emailChannel === 'gmail_web' ? (
         <Callout tone="brand">E-postalar <b>Gmail üzerinden, tarayıcıda</b> hazırlanır ve gönderilir (API gerekmez). Gmail oturumunu Canlı Kontrol Merkezi'nden kontrol edebilirsiniz. Kanal: Ayarlar &gt; Mesaj gönderimi. Yanıt takibi bu kanalda otomatik değildir; gelen yanıtları müşteri kartından kaydedin.</Callout>
       ) : null}
-      <Card title={settings.outreach.emailChannel === 'gmail_web' ? 'SMTP hesapları (isteğe bağlı, şu an kullanılmıyor)' : 'Bağlı hesaplar'}>
+      <Card title={settings.outreach.emailChannel !== 'smtp' ? 'SMTP hesapları (isteğe bağlı, şu an kullanılmıyor)' : 'Bağlı hesaplar'}>
         {!accounts?.length ? <Callout>Henüz e-posta hesabı yok. Gmail, Google Workspace, Outlook, Microsoft 365 veya kurumsal SMTP/IMAP hesabınızı ekleyin.</Callout> : accounts.map((a) => (
           <div key={a.id} className="list-item">
             <Badge tone={a.status === 'ok' ? 'success' : a.status === 'error' ? 'danger' : 'neutral'} dot>{a.status === 'ok' ? 'Doğrulandı' : a.status === 'error' ? 'Hata' : 'Test edilmedi'}</Badge>

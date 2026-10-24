@@ -19,6 +19,7 @@ interface Req {
   attachment: string | null
   preview: string | null
   testMode: boolean
+  manualSend?: boolean
 }
 
 export function SendConfirm() {
@@ -57,13 +58,14 @@ export function SendConfirm() {
         <>
           <Btn icon={<OctagonX />} variant="danger" disabled={busy} onClick={() => decide('stop')}>Kuyruğu durdur</Btn>
           <div className="spacer" />
-          <Btn icon={<SkipForward />} disabled={busy} onClick={() => decide('skip')}>Bunu atla</Btn>
-          <Btn icon={<Send />} variant="primary" disabled={busy || (needsCheck && !checked)} onClick={() => decide('send')}>{cur.testMode ? 'Test alıcısına gönder' : 'Gönder'}</Btn>
+          <Btn icon={<SkipForward />} disabled={busy} onClick={() => decide('skip')}>{cur.manualSend ? 'Göndermedim, atla' : 'Bunu atla'}</Btn>
+          <Btn icon={<Send />} variant="primary" disabled={busy || (!cur.manualSend && needsCheck && !checked)} onClick={() => decide('send')}>{cur.manualSend ? 'WhatsApp’ta gönderdim' : cur.testMode ? 'Test alıcısına gönder' : 'Gönder'}</Btn>
         </>
       }
     >
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 16 }}>
         <div className="col" style={{ gap: 10 }}>
+          {cur.manualSend && <Callout tone="brand"><b>WhatsApp uygulamanızda sohbet açıldı ve mesaj yazıldı.</b> Alıcıyı kontrol edip WhatsApp’ta <b>Enter</b> ile gönderin, sonra burada “WhatsApp’ta gönderdim” deyin. Göndermezseniz “Göndermedim, atla”.</Callout>}
           {cur.testMode && <Callout tone="warn">Test modu açık: mesaj şirkete değil, test alıcınıza gider.</Callout>}
           <div className="kv">
             <div>Şirket</div><div><b>{cur.company}</b></div>
@@ -78,7 +80,7 @@ export function SendConfirm() {
             <div className="card pad small pre" style={{ maxHeight: 300, overflow: 'auto' }}>{cur.body}</div>
           </div>
           {cur.attachment && <div className="small">Ek: {cur.attachment.split(/[\\/]/).pop()}</div>}
-          {needsCheck && (
+          {needsCheck && !cur.manualSend && (
             <label className="check"><input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />Tarayıcıdaki sohbetin/ e-postanın doğru alıcıya ait olduğunu kontrol ettim.</label>
           )}
           {queue.length > 1 && <div className="tiny muted">Sırada {queue.length - 1} onay daha var.</div>}

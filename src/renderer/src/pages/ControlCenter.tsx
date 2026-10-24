@@ -23,6 +23,7 @@ interface Sessions {
   google: boolean
   gmail: boolean
   gmailAccount: string | null
+  mailKind?: 'webmail' | 'gmail'
   whatsapp: boolean
   whatsappState: string
 }
@@ -43,6 +44,7 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
   const { data: initial, reload: reloadStatus } = useApi<AgentEv & { running: boolean; kind: string | null; profileDir: string | null }>('agent:status', undefined, [])
   const { data: runs, reload: reloadRuns } = useApi<any[]>('jobs:list', { active: false }, ['jobs'])
   const [ev, setEv] = useState<AgentEv | null>(null)
+  const lastState = useRef<string>('idle')
   const [feed, setFeed] = useState<AgentEv[]>([])
   const [running, setRunning] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
@@ -64,6 +66,7 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
   }, [initial])
   useAgentEvents((e) => {
     setEv(e)
+    lastState.current = e.state
     if (['ready', 'busy', 'needs_user', 'starting'].includes(e.state)) setRunning(true)
     if (e.state === 'closed') setRunning(false)
     if (e.step) setFeed((f) => [e, ...f].slice(0, 200))
@@ -78,7 +81,8 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
     if (!running) return
     let alive = true
     const tick = async () => {
-      if (!alive || document.hidden) return
+      // Kullanıcı tarayıcıda giriş/doğrulama yaparken önizleme alınmaz
+      if (!alive || document.hidden || lastState.current === 'needs_user') return
       const img = await call<string | null>('agent:preview').catch(() => null)
       if (alive && img) setPreview(img)
     }
@@ -190,8 +194,8 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
             <div className="col" style={{ gap: 8 }}>
               {([
                 ['google', 'Google hesabı', sessions?.google, 'Arama için giriş şart değildir; Gmail için gerekir.'],
-                ['gmail', 'Gmail', sessions?.gmail, sessions?.gmailAccount ?? null],
-                ['whatsapp', 'WhatsApp Web', sessions?.whatsapp, sessions && !sessions.whatsapp ? 'QR kodu telefonunuzla taratın (Bağlı cihazlar → Cihaz bağla)' : null]
+                [settings.outreach.emailChannel === 'webmail' ? 'webmail' : 'gmail', settings.outreach.emailChannel === 'webmail' ? 'Webmail (Roundcube)' : 'Gmail', sessions?.gmail, sessions?.gmailAccount ?? (settings.outreach.emailChannel === 'webmail' ? settings.outreach.webmailUrl || 'Adres Ayarlar’da girilmeli' : null)],
+                ['whatsapp', settings.outreach.whatsappChannel === 'desktop' ? 'WhatsApp Web (kullanılmıyor — masaüstü uygulaması seçili)' : 'WhatsApp Web', settings.outreach.whatsappChannel === 'desktop' ? null : sessions?.whatsapp, settings.outreach.whatsappChannel === 'desktop' ? 'Mesajlar bilgisayarınızdaki WhatsApp uygulamasında açılır; giriş gerekmez.' : sessions && !sessions.whatsapp ? 'QR kodu telefonunuzla taratın (Bağlı cihazlar → Cihaz bağla)' : null]
               ] as const).map(([k, label, ok, note]) => (
                 <div key={k} className="list-item">
                   <Badge tone={ok == null ? 'neutral' : ok ? 'success' : 'warning'} dot>{ok == null ? 'Kontrol edilmedi' : ok ? 'Açık' : 'Kapalı'}</Badge>
@@ -208,11 +212,11 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
               <Field label="Test araması (Google, tarayıcı üzerinden)">
                 <div className="row"><input className="input" value={query} onChange={(e) => setQuery(e.target.value)} /><Btn icon={<Search />} disabled={busy || !running} onClick={() => test(async () => { const r = await call<any[]>('agent:testSearch', { query }); return `${r.length} şirket bulundu: ${r.slice(0, 5).map((h) => h.name).join(', ')}${r.length > 5 ? '…' : ''}` })}>Ara</Btn></div>
               </Field>
-              <Field label="Test Gmail taslağı (gönderilmez)" hint="Boş bırakırsanız kendi Gmail adresinize taslak oluşturulur.">
+              <Field label={`Test e-posta taslağı — ${settings.outreach.emailChannel === 'webmail' ? 'Webmail' : 'Gmail'} (gönderilmez)`} hint="Boş bırakırsanız kendi adresinize taslak oluşturulur.">
                 <div className="row"><input className="input" value={testMail} onChange={(e) => setTestMail(e.target.value)} placeholder="kendi adresiniz" /><Btn icon={<Mail />} disabled={busy || !running} onClick={() => test(async () => (await call<any>('agent:testGmailDraft', { to: testMail })).message)}>Taslak oluştur</Btn></div>
               </Field>
               <Field label="Test WhatsApp sohbeti (gönderilmez)" hint="Kendi numaranızı girin; sohbet açılır, test metni yazılıp silinir.">
-                <div className="row"><input className="input" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="05xx xxx xx xx" /><Btn icon={<MessageCircle />} disabled={busy || !running} onClick={() => test(async () => (await call<any>('agent:testWhatsapp', { phone: testPhone })).message)}>Sohbeti aç</Btn></div>
+                <div className="row"><input className="input" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="05xx xxx xx xx" /><Btn icon={<MessageCircle />} disabled={busy || (!running && settings.outreach.whatsappChannel !== 'desktop')} onClick={() => test(async () => (await call<any>('agent:testWhatsapp', { phone: testPhone })).message)}>Sohbeti aç</Btn></div>
               </Field>
               {testOut && <Callout tone={testOut.ok ? 'brand' : 'danger'}>{testOut.text}</Callout>}
             </div>
@@ -221,8 +225,8 @@ export default function ControlCenter({ settings, setSettings }: PageProps) {
           <Card title="Gönderim tercihleri" actions={<Btn size="sm" variant="ghost" onClick={() => go('settings', { tab: 'outreach' })}>Ayarlar</Btn>}>
             <div className="kv">
               <div>Gönderim modu</div><div><b>{settings.outreach.sendMode === 'draft' ? 'Taslak (gönderilmez)' : settings.outreach.sendMode === 'confirm' ? 'Her mesaj için onay' : 'Onaylanmış kuyruk'}</b></div>
-              <div>E-posta</div><div>{settings.outreach.emailChannel === 'gmail_web' ? 'Gmail (tarayıcı)' : 'SMTP hesabı'}</div>
-              <div>WhatsApp</div><div>{settings.outreach.whatsappChannel === 'web' ? 'WhatsApp Web (tarayıcı)' : settings.outreach.whatsappChannel === 'cloud_api' ? 'Business API' : 'Manuel tıkla-gönder'}</div>
+              <div>E-posta</div><div>{settings.outreach.emailChannel === 'webmail' ? 'Webmail / Roundcube (tarayıcı)' : settings.outreach.emailChannel === 'gmail_web' ? 'Gmail (tarayıcı)' : 'SMTP hesabı'}</div>
+              <div>WhatsApp</div><div>{settings.outreach.whatsappChannel === 'desktop' ? 'WhatsApp masaüstü uygulaması (gönderme sizde)' : settings.outreach.whatsappChannel === 'web' ? 'WhatsApp Web (tarayıcı)' : settings.outreach.whatsappChannel === 'cloud_api' ? 'Business API' : 'Manuel tıkla-gönder'}</div>
               <div>Günlük sınır</div><div>E-posta {settings.outreach.webDailyLimitEmail} · WhatsApp {settings.outreach.webDailyLimitWhatsapp}</div>
               <div>Test modu</div><div>{settings.outreach.testMode ? <Badge tone="warning">Açık — gerçek alıcıya gitmez</Badge> : <Badge tone="brand">Kapalı</Badge>}</div>
             </div>

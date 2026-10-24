@@ -95,13 +95,15 @@ export default function Settings({ settings, setSettings, params }: PageProps) {
               </Field>
               <Field label="E-posta kanalı">
                 <select className="select" value={s.outreach.emailChannel} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, emailChannel: e.target.value as AppSettings['outreach']['emailChannel'] } })}>
+                  <option value="webmail">Webmail — Roundcube (tarayıcı, API gerekmez)</option>
                   <option value="gmail_web">Gmail (tarayıcı, API gerekmez)</option>
                   <option value="smtp">SMTP hesabı (isteğe bağlı)</option>
                 </select>
               </Field>
               <Field label="WhatsApp kanalı">
                 <select className="select" value={s.outreach.whatsappChannel} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, whatsappChannel: e.target.value as AppSettings['outreach']['whatsappChannel'] } })}>
-                  <option value="web">WhatsApp Web (tarayıcı)</option>
+                  <option value="desktop">WhatsApp masaüstü uygulaması (önerilen — gönderme sizde)</option>
+                  <option value="web">WhatsApp Web (tarayıcı, otomatik)</option>
                   <option value="click_to_chat">Manuel tıkla-gönder</option>
                   <option value="cloud_api">WhatsApp Business API (isteğe bağlı)</option>
                 </select>
@@ -109,6 +111,7 @@ export default function Settings({ settings, setSettings, params }: PageProps) {
               <Field label="Günlük e-posta sınırı (Gmail web)"><input className="input" type="number" min={1} max={500} value={s.outreach.webDailyLimitEmail} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webDailyLimitEmail: num(e.target.value, 1, 500) } })} /></Field>
               <Field label="Günlük WhatsApp sınırı (Web)"><input className="input" type="number" min={1} max={200} value={s.outreach.webDailyLimitWhatsapp} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webDailyLimitWhatsapp: num(e.target.value, 1, 200) } })} /></Field>
             </div>
+            {s.outreach.emailChannel === 'webmail' && <Field label="Webmail adresi" hint="Hosting firmanızın webmail giriş sayfası, ör. https://ucamedya.com.tr/webmail/"><input className="input" value={s.outreach.webmailUrl} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webmailUrl: e.target.value } })} placeholder="https://ucamedya.com.tr/webmail/" /></Field>}
             {s.outreach.whatsappChannel === 'web' && <Callout tone="warn">WhatsApp Web otomasyonu WhatsApp kullanım koşullarına aykırı sayılabilir ve hesabınız kısıtlanabilir. Uygulama spam kontrollerini atlatmaya çalışmaz; her mesajdan önce alıcı numarasını ve metni doğrular. Günlük sınırı düşük tutmanız ve "Onaylı gönderim" modunu kullanmanız önerilir.</Callout>}
             <label className="check"><input type="checkbox" checked={s.outreach.attachReport} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, attachReport: e.target.checked } })} /><div><b>E-postaya PDF analiz raporunu ekle</b><div className="small muted">Gmail üzerinden gönderimde son analiz raporu eklenir.</div></div></label>
             <label className="check"><input type="checkbox" checked={s.outreach.testMode} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, testMode: e.target.checked } })} /><div><b>Test modu</b><div className="small muted">Açıkken hiçbir gerçek şirkete mesaj gitmez; tüm gönderimler test alıcısına yönlendirilir.</div></div></label>

@@ -19,18 +19,20 @@ import type { FileStore } from '../files/folders'
 import type { AiProvider } from '../integrations/ai/ai-client'
 import { aiDraft, rewriteDraft, templateDraft, type DraftContext } from './drafting'
 import { checkEligibility, idempotencyKey, isOptOutReply } from './compliance'
-import { clickToChatUrl, fetchInbox, sendEmail, whatsappSendTemplate, type EmailAccount } from './channels'
+import { clickToChatUrl, fetchInbox, sendEmail, whatsappDesktopUrl, whatsappSendTemplate, type EmailAccount } from './channels'
 import { emailKey, isTrMobile, phoneKey } from '@shared/text'
 import { join } from 'node:path'
 import { log } from '../logger'
 import type { AgentBrowser } from '../automation/agent-browser'
 import type { WhatsAppWeb } from '../automation/whatsapp-web'
 import type { GmailWeb } from '../automation/gmail-web'
+import type { RoundcubeWeb } from '../automation/roundcube-web'
 
 export interface WebTransports {
   agent: AgentBrowser
   wa: WhatsAppWeb
   gmail: GmailWeb
+  rc: RoundcubeWeb
   ensureStarted: () => Promise<void>
   available: () => boolean
 }
@@ -47,6 +49,8 @@ export interface ConfirmRequest {
   attachment: string | null
   preview: string | null
   testMode: boolean
+  /** true: gönderimi kullanıcı WhatsApp uygulamasında kendisi yapar, burada yalnızca sonucu bildirir */
+  manualSend?: boolean
 }
 
 type Channel = 'email' | 'whatsapp'
@@ -74,10 +78,11 @@ export class OutreachService {
     return [...this.pendingConfirm.keys()]
   }
 
-  transport(channel: Channel): 'gmail_web' | 'smtp' | 'whatsapp_web' | 'cloud_api' | 'click_to_chat' {
+  transport(channel: Channel): 'webmail' | 'gmail_web' | 'smtp' | 'whatsapp_web' | 'whatsapp_desktop' | 'cloud_api' | 'click_to_chat' {
     const o = this.settings.get().outreach
-    if (channel === 'email') return o.emailChannel === 'smtp' ? 'smtp' : 'gmail_web'
+    if (channel === 'email') return o.emailChannel === 'smtp' ? 'smtp' : o.emailChannel === 'webmail' ? 'webmail' : 'gmail_web'
     if (o.whatsappChannel === 'web') return 'whatsapp_web'
+    if (o.whatsappChannel === 'desktop') return 'whatsapp_desktop'
     return o.whatsappChannel === 'cloud_api' ? 'cloud_api' : 'click_to_chat'
   }
 
@@ -248,9 +253,9 @@ export class OutreachService {
       permissionStatus: perm,
       allowPersonalContacts: s.outreach.allowPersonalContacts,
       alreadySentToRecipient: !!rec && !!this.db.get("SELECT 1 FROM outreach_messages WHERE channel = ? AND recipient_key = ? AND test_mode = 0 AND status IN ('queued','sending','awaiting_confirm','sent','delivered','read','manual_opened','unverified')", d.channel, rec.key),
-      accountReady: tr === 'gmail_web' || tr === 'whatsapp_web' ? webReady : d.channel === 'email' ? !!acc : !!wa && (wa.mode === 'click_to_chat' || wa.status === 'ok'),
+      accountReady: tr === 'whatsapp_desktop' ? true : tr === 'webmail' ? webReady && !!o.webmailUrl : tr === 'gmail_web' || tr === 'whatsapp_web' ? webReady : d.channel === 'email' ? !!acc : !!wa && (wa.mode === 'click_to_chat' || wa.status === 'ok'),
       dailySent: this.sentToday(d.channel),
-      dailyLimit: tr === 'gmail_web' ? o.webDailyLimitEmail : tr === 'whatsapp_web' ? o.webDailyLimitWhatsapp : ((acc as { daily_limit?: number } | undefined)?.daily_limit ?? 50),
+      dailyLimit: tr === 'gmail_web' || tr === 'webmail' ? o.webDailyLimitEmail : tr === 'whatsapp_web' || tr === 'whatsapp_desktop' ? o.webDailyLimitWhatsapp : ((acc as { daily_limit?: number } | undefined)?.daily_limit ?? 50),
       whatsappMode: tr === 'cloud_api' ? 'cloud_api' : 'click_to_chat',
       whatsappTemplateReady: !!wa?.template_name,
       isMobileNumber: d.channel === 'whatsapp' && rec ? isTrMobile(rec.key) || !rec.key.startsWith('90') : undefined,
@@ -363,13 +368,17 @@ export class OutreachService {
     }
     const s = this.settings.get()
     const testMode = !!m.test_mode || s.outreach.testMode
-    const isWeb = ['gmail_web', 'whatsapp_web'].includes(this.transport(m.channel))
+    const isWeb = ['gmail_web', 'webmail', 'whatsapp_web', 'whatsapp_desktop'].includes(this.transport(m.channel))
     // Tarayıcı kanallarında hazırlık aşaması "preparing"dir; yalnızca gönder düğmesine basılırken "sending" olur
     this.db.run("UPDATE outreach_messages SET status = ?, attempts = attempts + 1 WHERE id = ?", isWeb ? 'preparing' : 'sending', id)
     try {
       let providerId = ''
       const tr = this.transport(m.channel)
-      if (tr === 'gmail_web' || tr === 'whatsapp_web') {
+      if (tr === 'whatsapp_desktop') {
+        const outcome = await this.processDesktop(m, testMode)
+        if (outcome !== 'sent') return
+        providerId = 'desktop:user-confirmed'
+      } else if (tr === 'gmail_web' || tr === 'webmail' || tr === 'whatsapp_web') {
         const outcome = await this.processWeb(m, testMode)
         if (outcome !== 'sent') return
         providerId = `web:${tr}`
@@ -419,6 +428,34 @@ export class OutreachService {
   }
 
   /**
+   * WhatsApp masaüstü uygulaması: sohbet resmî whatsapp:// bağlantısıyla açılır ve mesaj kutuya yazılır.
+   * Uygulamanın içi okunamadığı için gönderimi kullanıcı kendisi yapar (Enter) ve sonucu burada bildirir;
+   * bu kanalda otomatik gönderim ve otomatik doğrulama yoktur.
+   */
+  private async processDesktop(m: { id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string }, testMode: boolean): Promise<'sent' | 'handled'> {
+    const s = this.settings.get()
+    const company = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
+    const to = testMode ? phoneKey(s.outreach.testRecipientPhone) : m.recipient_key
+    await shell.openExternal(whatsappDesktopUrl(to, m.body))
+    this.companies.log(m.company_id, 'WhatsApp uygulamasında sohbet açıldı', `+${to}`, 'system', 'message', m.id)
+    if (s.outreach.sendMode === 'draft') {
+      this.db.run("UPDATE outreach_messages SET status = 'prepared', error = 'WhatsApp uygulamasında sohbet açıldı ve mesaj yazıldı; gönderilmedi.', sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", m.id)
+      return 'handled'
+    }
+    this.db.run("UPDATE outreach_messages SET status = 'awaiting_confirm' WHERE id = ?", m.id)
+    this.emitChange('outreach')
+    const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
+      this.pendingConfirm.set(m.id, resolve)
+      this.emitConfirm({ messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'WhatsApp uygulamasında açılan sohbetin bu numaraya ait olduğunu kontrol edin, mesajı Enter ile gönderin.', subject: null, body: m.body, attachment: null, preview: null, testMode, manualSend: true })
+    })
+    this.emitConfirm({ messageId: m.id, closed: true })
+    if (decision === 'send') return 'sent'
+    this.db.run("UPDATE outreach_messages SET status = ?, error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", decision === 'skip' ? 'cancelled' : 'queued', decision === 'skip' ? 'Kullanıcı göndermediğini bildirdi.' : null, m.id)
+    if (decision === 'stop') this.pauseQueue('whatsapp')
+    return 'handled'
+  }
+
+  /**
    * Tarayıcı kanalı (Gmail web / WhatsApp Web): hazırla → (moda göre) taslak bırak / onay iste / gönder → doğrula.
    * 'sent' dönerse çağıran gönderim kayıtlarını tamamlar; diğer durumlarda mesajın durumu burada yazılır.
    */
@@ -452,8 +489,9 @@ export class OutreachService {
       verified = r.recipientVerified
       verifyNote = r.reason ?? (r.headerText ? `Sohbet başlığı: ${r.headerText}` : null)
     } else {
-      await this.web.gmail.ensureLoggedIn(company)
-      const r = await this.web.gmail.prepare({ to, subject, body: m.body, attachment }, company)
+      const mail = this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail
+      await mail.ensureLoggedIn(company)
+      const r = await mail.prepare({ to, subject, body: m.body, attachment }, company)
       if (!r.ok) {
         setStatus('failed', r.reason)
         this.pauseQueue(m.channel)
@@ -465,9 +503,9 @@ export class OutreachService {
 
     // 2) Taslak modu: göndermeden bırak
     if (mode === 'draft') {
-      if (m.channel === 'email') await this.web.gmail.saveDraft(company)
-      setStatus(m.channel === 'email' ? 'draft_saved' : 'prepared', m.channel === 'email' ? 'Gmail taslaklarına kaydedildi (gönderilmedi).' : 'Mesaj WhatsApp sohbetine yazıldı, gönderilmedi.')
-      this.companies.log(m.company_id, m.channel === 'email' ? 'Gmail taslağı oluşturuldu' : 'WhatsApp mesajı sohbete yazıldı (gönderilmedi)', to, 'system', 'message', m.id)
+      if (m.channel === 'email') await (this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail).saveDraft(company)
+      setStatus(m.channel === 'email' ? 'draft_saved' : 'prepared', m.channel === 'email' ? 'Taslaklar klasörüne kaydedildi (gönderilmedi).' : 'Mesaj WhatsApp sohbetine yazıldı, gönderilmedi.')
+      this.companies.log(m.company_id, m.channel === 'email' ? 'E-posta taslağı oluşturuldu' : 'WhatsApp mesajı sohbete yazıldı (gönderilmedi)', to, 'system', 'message', m.id)
       return 'handled'
     }
 
@@ -483,7 +521,7 @@ export class OutreachService {
       })
       this.emitConfirm({ messageId: m.id, closed: true })
       if (decision !== 'send') {
-        if (m.channel === 'email') await this.web.gmail.saveDraft(company).catch(() => undefined)
+        if (m.channel === 'email') await (this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail).saveDraft(company).catch(() => undefined)
         setStatus(decision === 'skip' ? 'cancelled' : 'queued', decision === 'skip' ? 'Kullanıcı bu mesajı atladı (gönderilmedi).' : null)
         if (decision === 'stop') this.pauseQueue(m.channel)
         return 'handled'
@@ -492,7 +530,7 @@ export class OutreachService {
 
     // 4) Gönder ve doğrula
     this.db.run("UPDATE outreach_messages SET status = 'sending' WHERE id = ?", m.id)
-    const res = m.channel === 'whatsapp' ? await this.web.wa.send(m.body, company) : await this.web.gmail.send(company)
+    const res = m.channel === 'whatsapp' ? await this.web.wa.send(m.body, company) : await (this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail).send(company)
     if (res.status === 'unverified') {
       setStatus('unverified', res.detail)
       this.companies.log(m.company_id, 'Gönderim doğrulanamadı', res.detail, 'system', 'message', m.id)

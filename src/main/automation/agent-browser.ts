@@ -225,8 +225,14 @@ export class AgentBrowser {
     const target = this.lastActive && !this.lastActive.isClosed() ? this.lastActive : pages[pages.length - 1]
     if (!target) return null
     try {
-      const buf = await target.screenshot({ type: 'jpeg', quality: 55, timeout: 4000, scale: 'css' })
-      return `data:image/jpeg;base64,${buf.toString('base64')}`
+      // Doğrudan CDP ile alınır: sayfaya stil eklemez, odak/kaydırma değiştirmez (kullanıcının tıklamalarını bölmez)
+      const cdp = await target.context().newCDPSession(target)
+      try {
+        const r = (await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 50, optimizeForSpeed: true })) as { data: string }
+        return `data:image/jpeg;base64,${r.data}`
+      } finally {
+        await cdp.detach().catch(() => undefined)
+      }
     } catch {
       return null
     }
