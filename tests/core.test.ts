@@ -226,7 +226,7 @@ describe('veritabanı ve müşteri havuzu', () => {
     for (const t of ['companies', 'company_contacts', 'research_projects', 'research_results', 'website_analyses', 'analysis_findings', 'screenshots', 'outreach_drafts', 'outreach_permissions', 'outreach_messages', 'communication_events', 'email_accounts', 'whatsapp_accounts', 'offers', 'offer_items', 'tasks', 'automation_runs', 'integrations', 'activity_logs', 'app_settings']) expect(tables).toContain(t)
     expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM stages')!.n).toBe(16)
     expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM services')!.n).toBe(12)
-    expect(db.migrate()).toBe(1)
+    expect(db.migrate()).toBe(db.latestVersion())
   })
 
   it('tekrar kontrolü: alan adı, telefon ve ad+şehir', () => {
@@ -278,7 +278,7 @@ describe('veritabanı ve müşteri havuzu', () => {
   it('yedek tutarlı alınır, doğrulanır; bozuk dosya reddedilir', () => {
     const bs = new BackupService(db, () => join(dir, 'yedek'))
     const r = bs.create('manual')
-    expect(verifyBackupFile(r.file, 1).ok).toBe(true)
+    expect(verifyBackupFile(r.file, db.latestVersion()).ok).toBe(true)
     expect(verifyBackupFile(join(dir, 'yok.sqlite')).ok).toBe(false)
   })
 })
@@ -409,5 +409,22 @@ describe('alıcı seçimi ve kurumsal şablon', () => {
     const out = templateDraft({ company: { name: 'Acme | Ana Sayfa', sector: null, city: null, website: null, websiteStatus: 'ok' }, findings: [], services: [], brand: { name: 'Uca Medya', website: 'ucamedya.com.tr', email: 'info@ucamedya.com.tr', phone: '', signature: 'Uca Medya Ekibi' } as any, channel: 'email', tone: 'professional', optOutLine: 'İstemiyorsanız RET yazın.', templates: DEFAULT_TEMPLATES })
     expect(out.subject).toBe('Acme için ücretsiz UCA Radar dijital değerlendirmesi')
     expect(out.body).toContain('RET yazın')
+  })
+})
+
+describe('ücretsiz e-posta sınıflandırması', () => {
+  it('sitede yayımlanan gmail kurumsal, CSV ile gelen gmail kişisel sayılır', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'uca-kind-'))
+    const db = new Db(join(dir, 't.db'))
+    db.migrate()
+    const cs = new CompanyService(db, new FileStore(db, () => join(dir, 'data')))
+    const id = cs.create({ name: 'EmlaXo Türkiye - Kocaeli Emlak Ofisi', source: 'manual' } as any)
+    cs.addContact(id, { type: 'email', value: 'emlaxogayrimenkul@gmail.com', sourceType: 'website', sourceUrl: 'https://www.emlaxo.com/iletisim' })
+    cs.addContact(id, { type: 'email', value: 'biri@hotmail.com', sourceType: 'import' })
+    const kinds = Object.fromEntries(db.all<{ value_key: string; kind: string }>('SELECT value_key, kind FROM company_contacts WHERE company_id = ?', id).map((r) => [r.value_key, r.kind]))
+    expect(kinds['emlaxogayrimenkul@gmail.com']).toBe('corporate')
+    expect(kinds['biri@hotmail.com']).toBe('personal')
+    ;(db as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
   })
 })

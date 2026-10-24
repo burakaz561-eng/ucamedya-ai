@@ -359,7 +359,10 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     },
     'outreach:manualNext': () => s.outreach.openNextManual(),
     'outreach:manualMark': (p) => s.outreach.markManual(id.parse(p?.id), z.boolean().parse(p?.sent)),
-    'outreach:syncReplies': () => s.jobs.enqueue('reply_sync', 'E-posta yanıtlarını kontrol et', {}),
+    'outreach:syncReplies': () => {
+      if (!s.db.get("SELECT id FROM email_accounts WHERE status = 'ok' AND imap_host IS NOT NULL LIMIT 1")) throw new Error('Otomatik yanıt takibi için IMAP hesabı gerekir. Webmail kullanıyorsanız gelen yanıtları Roundcube gelen kutunuzda görürsünüz; "İSTEMİYORUM" yazanları firmanın sayfasından ret listesine ekleyin. İsterseniz Entegrasyonlar’dan IMAP hesabınızı ekleyebilirsiniz.')
+      return s.jobs.enqueue('reply_sync', 'E-posta yanıtlarını kontrol et', {})
+    },
     'outreach:setPermission': (p) => {
       const v = z.object({ companyId: id, channel: z.enum(['email', 'whatsapp']), status: str(40), legalBasis: optStr(300), purpose: optStr(300), evidence: optStr(1000) }).parse(p)
       s.outreach.setPermission(v.companyId, v.channel, v.status, v.legalBasis ?? null, v.purpose ?? null, v.evidence ?? null)

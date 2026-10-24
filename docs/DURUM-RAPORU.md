@@ -2,6 +2,11 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.2.4 — Firmanın yayımladığı Gmail adresleri engellenmiyor
+
+- Ücretsiz e-posta (gmail, hotmail vb.) firmanın kendi sitesinde veya Google işletme kaydında yayımlanmışsa firmanın iş adresi (kurumsal) sayılır. CSV ya da elle eklenen ücretsiz adresler kişisel kalır. Veritabanı şeması 2: mevcut kayıtlar da düzeltildi. ✅ birim testi + kullanıcının veritabanında doğrulandı (emlaxogayrimenkul@gmail.com → kurumsal).
+- "Yanıtları kontrol et": IMAP hesabı yoksa artık başarısız bir görev başlatmak yerine açıklayıcı mesaj verir. Webmail ile otomatik yanıt takibi yok; yanıtlar Roundcube gelen kutusunda görülür. ⬜ Roundcube üzerinden otomatik yanıt okuma yapılmadı.
+
 ## 0.2.3 — WhatsApp masaüstünde sohbet şirketin numarasıyla açılır
 
 Kullanıcı isteğiyle: WhatsApp masaüstü kanalında sohbet, test modu açık olsa da şirketin gerçek numarasıyla açılır ve mesaj kutuya yazılır. Uygulama hiçbir şey göndermez; mesaj ancak kullanıcı WhatsApp'ta Enter'a basarsa gider. "WhatsApp'ta gönderdim" denirse kayıt gerçek gönderim olarak işlenir (şirket "yanıt bekleniyor" aşamasına geçer, tekrar gönderim engellenir). Webmail ve WhatsApp Web için test modu yönlendirmesi aynen sürüyor. ✅ kod + birim testleri; 🟡 kullanıcının ekranında henüz denenmedi.

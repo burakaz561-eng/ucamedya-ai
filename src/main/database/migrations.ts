@@ -461,5 +461,10 @@ CREATE TABLE backups (
   created_at TEXT NOT NULL DEFAULT (${ts})
 );
 `
+  },
+  {
+    version: 2,
+    name: 'firmanın yayımladığı ücretsiz e-posta adresleri kurumsal',
+    sql: `UPDATE company_contacts SET kind = 'corporate' WHERE type = 'email' AND kind = 'personal' AND source_type IN ('website','provider');`
   }
 ]

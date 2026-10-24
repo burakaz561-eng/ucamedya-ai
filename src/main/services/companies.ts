@@ -50,7 +50,10 @@ export class CompanyService {
   addContact(companyId: number, c: { type: string; value: string; kind?: string; label?: string; sourceUrl?: string | null; sourceType: string; verified?: boolean }) {
     const key = c.type === 'email' ? emailKey(c.value) : c.type === 'phone' || c.type === 'whatsapp' ? phoneKey(c.value) : c.value.trim().toLowerCase()
     if (!key) return
-    const kind = c.kind ?? (c.type === 'email' && FREE_MAIL.test(key) ? 'personal' : 'corporate')
+    // Ücretsiz e-posta (gmail vb.) firmanın kendi sitesinde veya Google işletme kaydında yayımlanmışsa
+    // firmanın iş iletişim adresidir; aksi halde (CSV, elle, bilinmeyen kaynak) kişisel sayılır.
+    const published = c.sourceType === 'website' || c.sourceType === 'provider'
+    const kind = c.kind ?? (c.type === 'email' && FREE_MAIL.test(key) && !published ? 'personal' : 'corporate')
     this.db.run(
       `INSERT INTO company_contacts(company_id, type, value, value_key, kind, label, source_url, source_type, verified_at)
        VALUES (?,?,?,?,?,?,?,?,?)
