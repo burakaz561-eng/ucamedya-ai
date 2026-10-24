@@ -28,6 +28,11 @@ UcaMedya AI, Google araması, Gmail ve WhatsApp Web işlemlerini bilgisayarını
 3. **Müşteri Havuzu** ve **AI Mesaj Stüdyosu**'nda taslakları inceleyip **Onayla**.
 4. **E-posta Kampanyaları** veya **WhatsApp İşlemleri** → taslakları seçin → **Onaylananları kuyruğa ekle** → **Kuyruğu başlat**.
 
+## Webmail (Roundcube) ve WhatsApp masaüstü uygulaması (0.2.1)
+
+- **Webmail**: Ayarlar → Mesaj gönderimi → E-posta kanalı "Webmail — Roundcube", adres `https://ucamedya.com.tr/webmail/`. Otomasyon tarayıcısında webmail'e bir kez giriş yapın. Taslak ve gönderim Roundcube'un kendi komutlarıyla yapılır.
+- **WhatsApp masaüstü uygulaması** (önerilen): WhatsApp kanalı "WhatsApp masaüstü uygulaması". Uygulama sohbeti bilgisayarınızdaki WhatsApp/WhatsApp Business'ta açar ve mesajı kutuya yazar; **Enter'a siz basarsınız**, sonra UcaMedya AI'da "WhatsApp'ta gönderdim" dersiniz. Giriş gerekmez, hesap kısıtlama riski en düşüktür.
+
 ## Gönderim modları (Ayarlar → Mesaj gönderimi)
 
 | Mod | Ne olur |

@@ -1,6 +1,20 @@
 # UcaMedya AI Growth Studio — Özellik Durum Raporu ve Test Raporu
 
-Sürüm **0.2.0** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
+Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
+
+## 0.2.1 — Webmail (Roundcube) ve WhatsApp masaüstü uygulaması (gerçek hesaplarla test edildi)
+
+| Özellik | Durum | Not |
+|---|---|---|
+| Webmail (Roundcube) kanalı: oturum tespiti, yeni ileti (alıcı/konu/gövde), alıcı doğrulama, taslak kaydetme | ✅ | info@ucamedya.com.tr hesabıyla, Roundcube 1.7 (Elastic) üzerinde 3 taslak oluşturuldu; hiçbir ileti gönderilmedi |
+| Webmail: gönder + gönderim doğrulaması, PDF eki | 🟡 | Kod hazır (Roundcube'un kendi "send" komutu, başarıda ileti ekranından çıkış). Gerçek gönderim yapılmadı |
+| WhatsApp masaüstü uygulaması kanalı (whatsapp://send ile sohbet açma, metni kutuya yazma) | ✅ | Kullanıcının WhatsApp Business masaüstü uygulamasında kendi numarasıyla test edildi; metin kutuda göründü, gönderilmedi |
+| WhatsApp masaüstü: gönderim | Kullanıcıda | Masaüstü uygulamasının içi okunamadığı için gönderimi (Enter) kullanıcı yapar ve uygulamada "WhatsApp'ta gönderdim" der; otomatik gönderim/doğrulama yok. Kuyruk modu bu kanalda her mesajda onay ister |
+| Canlı önizleme doğrudan CDP ile; giriş/doğrulama sırasında önizleme durur | ✅ (kod) | Kullanıcının WhatsApp Web giriş bağlantısına tıklayamaması üzerine değiştirildi |
+| Gmail (tarayıcı) kanalı | 🟡 | Kullanıcı Gmail kullanmadığı için gerçek hesapla denenmedi; Webmail kanalı varsayılan seçildi |
+
+---
+
 
 ## 0.2.0 — API'siz çalışma (tarayıcı otomasyonu)
 
