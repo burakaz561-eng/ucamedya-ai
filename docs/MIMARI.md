@@ -21,6 +21,10 @@ Bu belge, uygulamanın neden bu şekilde kurulduğunu ve hangi parçanın nerede
 | Excel | **exceljs** | Müşteri listesi ve araştırma sonuçları .xlsx. |
 | Paketleme | **electron-builder** | Windows NSIS kurulum; macOS DMG (x64 + arm64) yapılandırması, imzalama/notarization yer tutucuları. |
 
+## 1b. Tarayıcı otomasyonu (0.2)
+
+`src/main/automation/`: `agent-browser.ts` (Chrome/Edge'i ayrı profil + yerel CDP portu ile başlatır, işlemleri sıraya koyar, kullanıcı müdahalesi bekler, canlı önizleme), `google-browser.ts` (arama kutusu → Enter → "Daha fazla işletme" → sayfalama, yönlendirme çözümü), `gmail-web.ts`, `whatsapp-web.ts` (hazırla → doğrula → [onay] → gönder → doğrula). Gönderim kuyruğu (`outreach-service.ts`) kanal başına taşıyıcı seçer: `gmail_web` / `smtp`, `whatsapp_web` / `cloud_api` / `click_to_chat`. Neden ayrı profil: Chrome 136+ varsayılan profile uzaktan bağlanmaya izin vermez; ayrıca asıl profildeki şifreler otomasyona açılmamış olur.
+
 ## 2. Katmanlar
 
 ```

@@ -16,6 +16,7 @@ export default function Finder({ settings }: PageProps) {
   const { data: cities } = useApi<{ code: string; name: string; districts: string[] }[]>('geo:cities', undefined, [])
   const { data: profiles } = useApi<any[]>('profiles:list', undefined, [])
   const { data: secrets } = useApi<Record<string, boolean>>('secrets:status', undefined, [])
+  const { data: browsers } = useApi<{ kind: string; label: string }[]>('agent:browsers', undefined, [])
   const { data: researches } = useApi<any[]>('research:list', undefined, ['research', 'jobs'])
   const { go } = useNav()
   const toast = useToast()
@@ -23,11 +24,11 @@ export default function Finder({ settings }: PageProps) {
   const [f, setF] = useState({
     name: '', sectors: [] as string[], customSector: '', locations: [] as { city: string; district?: string }[], city: '', district: '',
     customerTypes: [] as string[], analysisTypes: Object.keys(FINDING_CATEGORIES), targetCount: 25, provider: settings.search.provider,
-    steps: { analyze: true, screenshots: true, pdf: true, drafts: true }, channels: ['email', 'whatsapp'] as ('email' | 'whatsapp')[], tone: 'professional', extraQueries: ''
+    steps: { analyze: true, screenshots: true, pdf: true, drafts: true, contacts: true }, channels: ['email', 'whatsapp'] as ('email' | 'whatsapp')[], tone: 'professional', extraQueries: ''
   })
   const [watch, setWatch] = useState<number | null>(null)
-  const providerKey = { google_places: 'google_places_key', serpapi: 'serpapi_key', brave: 'brave_key' }[f.provider as string]
-  const providerReady = !!(providerKey && secrets?.[providerKey])
+  const providerKey = ({ google_places: 'google_places_key', serpapi: 'serpapi_key', brave: 'brave_key' } as Record<string, string>)[f.provider as string]
+  const providerReady = f.provider === 'google_browser' ? !!browsers?.length : !!(providerKey && secrets?.[providerKey])
   const districts = useMemo(() => cities?.find((c) => c.name === f.city)?.districts ?? [], [cities, f.city])
   const active = researches?.find((r) => ['running', 'queued', 'paused'].includes(r.status))
   useEffect(() => {
@@ -123,7 +124,8 @@ export default function Finder({ settings }: PageProps) {
               </Field>
               <Field label="Arama sağlayıcısı">
                 <select className="select" value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value as typeof f.provider })}>
-                  <option value="google_places">Google Places API</option>
+                  <option value="google_browser">Google (bilgisayarınızdaki tarayıcı ile — API gerekmez)</option>
+                  <option value="google_places">Google Places API (isteğe bağlı, anahtar gerekir)</option>
                   <option value="serpapi">SerpAPI (Google Haritalar)</option>
                   <option value="brave">Brave Search API</option>
                 </select>
@@ -131,7 +133,7 @@ export default function Finder({ settings }: PageProps) {
             </div>
             {!providerReady && (
               <Callout tone="warn">
-                Bu sağlayıcının API anahtarı girilmemiş; araştırma başlatılamaz. <a href="#" onClick={(e) => (e.preventDefault(), go('integrations'))}>Entegrasyonlar</a> sayfasından ekleyin veya "CSV içe aktar" ile kendi listenizi yükleyin.
+                {f.provider === 'google_browser' ? 'Google Chrome veya Microsoft Edge bulunamadı; tarayıcı üzerinden arama yapılamaz.' : <>Bu sağlayıcının API anahtarı girilmemiş. Varsayılan seçenek olan <b>Google (tarayıcı ile)</b> anahtar gerektirmez; ya da <a href="#" onClick={(e) => (e.preventDefault(), go('integrations'))}>Entegrasyonlar</a>'dan anahtar ekleyin.</>}
               </Callout>
             )}
             <Field label="Analiz türü">
@@ -139,7 +141,7 @@ export default function Finder({ settings }: PageProps) {
             </Field>
             <Field label="Çıktılar">
               <div className="grid g2">
-                {([['analyze', 'Web sitesi analizi'], ['screenshots', 'Ekran görüntüleri'], ['pdf', 'PDF raporları'], ['drafts', 'Mesaj taslakları']] as const).map(([k, l]) => (
+                {([['analyze', 'Web sitesi analizi'], ['screenshots', 'Ekran görüntüleri'], ['contacts', 'İletişim bilgilerini araştır'], ['pdf', 'PDF raporları'], ['drafts', 'Mesaj taslakları']] as const).map(([k, l]) => (
                   <label key={k} className="check"><input type="checkbox" checked={f.steps[k]} onChange={(e) => setF({ ...f, steps: { ...f.steps, [k]: e.target.checked } })} />{l}</label>
                 ))}
               </div>
@@ -154,10 +156,10 @@ export default function Finder({ settings }: PageProps) {
             )}
             <div className="grid g2">
               <Field label="Araştırma adı"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName} /></Field>
-              <Field label="Ek arama ifadeleri" hint="Virgülle ayırın (isteğe bağlı)"><input className="input" value={f.extraQueries} onChange={(e) => setF({ ...f, extraQueries: e.target.value })} placeholder="ör. prefabrik yapı, çelik konstrüksiyon" /></Field>
+              <Field label="Arama kelimeleri" hint="Virgülle ayırın; her biri seçtiğiniz şehirlerle birlikte aranır (isteğe bağlı)"><input className="input" value={f.extraQueries} onChange={(e) => setF({ ...f, extraQueries: e.target.value })} placeholder="ör. prefabrik yapı, çelik konstrüksiyon" /></Field>
             </div>
             <Callout>
-              Şirketler yalnızca resmî arama API'lerinden bulunur; web siteleri robots.txt kurallarına uyularak ziyaret edilir. İletişim bilgileri şirketin kendi sitesinde veya sağlayıcıda yayımlanan kurumsal bilgilerle sınırlıdır ve kaynağıyla birlikte kaydedilir. Hiçbir mesaj sizin onayınız olmadan gönderilmez.
+              {f.provider === 'google_browser' ? <>Arama, bilgisayarınızdaki tarayıcıda Google'a yazılarak yapılır; sorgular arasında bekleme vardır. Google doğrulama (CAPTCHA) isterse işlem durur ve sizin tamamlamanız beklenir. İlerlemeyi <a href="#" onClick={(e) => (e.preventDefault(), go('control'))}>Canlı Kontrol Merkezi</a>'nden izleyebilirsiniz.</> : 'Şirketler resmî arama API’sinden bulunur.'} Web siteleri robots.txt kurallarına uyularak ziyaret edilir. İletişim bilgileri şirketin kendi sitesinde veya sağlayıcıda yayımlanan kurumsal bilgilerle sınırlıdır ve kaynağıyla birlikte kaydedilir. Hiçbir mesaj sizin onayınız olmadan gönderilmez.
             </Callout>
             <div className="row">
               <Btn variant="primary" icon={<Play />} disabled={busy || !providerReady || (!sectors.length && !f.extraQueries.trim())} onClick={start}>Araştırmayı başlat</Btn>

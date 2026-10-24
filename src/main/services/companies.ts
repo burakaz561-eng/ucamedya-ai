@@ -4,7 +4,7 @@ import type { Db, Row } from '../database/db'
 import { j } from '../database/db'
 import type { FileStore } from '../files/folders'
 import type { SearchHit } from '@shared/types'
-import { companyNameKey, domainOf, emailKey, isOfficialWebsite, normalizeWebsite, phoneKey, FREE_MAIL } from '@shared/text'
+import { cleanBusinessName, companyNameKey, domainOf, emailKey, isOfficialWebsite, normalizeWebsite, phoneKey, FREE_MAIL } from '@shared/text'
 
 export class CompanyService {
   constructor(
@@ -61,6 +61,7 @@ export class CompanyService {
   }
 
   create(h: SearchHit & { sector?: string | null; email?: string; source: string; description?: string }): number {
+    h = { ...h, name: cleanBusinessName(h.name) || h.name }
     const site = normalizeWebsite(h.website)
     const official = site && isOfficialWebsite(site) ? site : null
     const r = this.db.run(

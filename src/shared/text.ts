@@ -105,6 +105,16 @@ export function normalizeWebsite(url: string | null | undefined): string | null 
   }
 }
 
+/** İşletme adlarındaki emoji ve süs karakterlerini temizler ("🛠️ Maker Mimarlık ☀️" → "Maker Mimarlık"). */
+export function cleanBusinessName(s: string): string {
+  return s
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
+    .replace(/[★☆✓✔•◆◇■□▶►]+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s\-–|·&]+|[\s\-–|·&]+$/g, '')
+    .trim()
+}
+
 export function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s
 }

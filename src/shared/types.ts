@@ -19,8 +19,9 @@ export interface AppSettings {
     logoPath: string
     senderName: string
   }
-  ai: { provider: 'anthropic' | 'openai' | 'none'; model: string; openaiModel: string; enabled: boolean }
-  search: { provider: 'google_places' | 'serpapi' | 'brave' | 'manual'; maxQueriesPerResearch: number }
+  ai: { provider: 'anthropic' | 'openai' | 'ollama' | 'none'; model: string; openaiModel: string; ollamaUrl: string; ollamaModel: string; enabled: boolean }
+  search: { provider: 'google_browser' | 'google_places' | 'serpapi' | 'brave' | 'manual'; maxQueriesPerResearch: number; pagesPerQuery: number }
+  automation: { browser: 'chrome' | 'edge'; autoStart: boolean; previewIntervalSec: number }
   analysis: { concurrency: number; pagespeed: boolean; maxPages: number; screenshotMaxWidth: number; respectRobots: boolean; timeoutSec: number }
   scoring: {
     weights: { improvementNeed: number; serviceFit: number; activeSignals: number; contactValidity: number; opportunitySignals: number }
@@ -39,6 +40,12 @@ export interface AppSettings {
     optOutText: string
     openTracking: boolean
     allowPersonalContacts: boolean
+    emailChannel: 'gmail_web' | 'smtp'
+    whatsappChannel: 'web' | 'cloud_api' | 'click_to_chat'
+    sendMode: 'draft' | 'confirm' | 'queue'
+    webDailyLimitEmail: number
+    webDailyLimitWhatsapp: number
+    attachReport: boolean
   }
   backup: { auto: boolean; intervalHours: number; keep: number; dir: string }
   security: { lockEnabled: boolean; lockAfterMinutes: number }

@@ -1,6 +1,35 @@
 # UcaMedya AI Growth Studio — Özellik Durum Raporu ve Test Raporu
 
-Sürüm **0.1.0** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
+Sürüm **0.2.0** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
+
+## 0.2.0 — API'siz çalışma (tarayıcı otomasyonu)
+
+Temel kullanım artık hiçbir API anahtarı gerektirmez. Google, Gmail ve WhatsApp Web, bilgisayardaki Chrome/Edge'in **uygulamaya ayrılmış bir profilinde**, kullanıcının bir kez kendisinin giriş yaptığı oturumlarla, Chrome'un geliştirici protokolü (CDP) üzerinden yönetilir.
+
+| Özellik | Durum | Not |
+|---|---|---|
+| Chrome/Edge tespiti, ayrı otomasyon profili, başlat/kapat | ✅ | Chrome 156 ile test edildi. Asıl Chrome profiline erişilmez (Chrome 136+ buna zaten izin vermez) |
+| Google'da tarayıcı üzerinden arama (kutuya yazma → Enter → "Daha fazla işletme" → sayfalama) | ✅ | Gerçek testte "Kocaeli inşaat firmaları" ile 14, "mimarlık Kocaeli" ile 5 şirket; ad, ilçe/il, telefon, web sitesi, kategori, puan okundu |
+| Google yönlendirme bağlantılarından gerçek site adresinin çözülmesi | ✅ | |
+| Rehber/belge sitelerinin ve genel başlıkların elenmesi, emoji temizleme | ✅ (birim test) | |
+| CAPTCHA / "olağan dışı trafik" / çerez onayı ekranında durup kullanıcıyı bekleme | 🟡 | Kod hazır; testlerde CAPTCHA çıkmadığı için gerçek CAPTCHA ile denenmedi. Çerez ekranında yalnızca "Tümünü reddet" seçilir |
+| Site analizi kapalıyken hafif iletişim taraması (ana sayfa + iletişim/hakkımızda) | ✅ | |
+| Canlı Kontrol Merkezi: canlı ekran önizlemesi, işlem akışı, başlat/duraklat/devam/iptal, son işlemi tekrar dene, günlükler, çıktı klasörü | ✅ | |
+| Oturum kontrolü: Google, Gmail, WhatsApp Web | ✅ (oturum kapalı durumu) / 🟡 (oturum açık durumu) | "Oturum kapalı" (Gmail yönlendirmesi, WhatsApp QR ekranı) gerçek sayfalarda doğrulandı. Oturum açık hâli gerçek hesapla denenmedi |
+| Gmail web: yeni ileti, alıcı/konu/gövde doldurma, alıcı doğrulama, PDF eki, taslak kaydetme, gönder + "İleti gönderildi" doğrulaması | 🟡 | Gerçek Gmail hesabıyla **denenmedi** (giriş sizin yapmanız gereken bir adım). İlk kullanımda Canlı Kontrol Merkezi'ndeki "Test Gmail taslağı" ile doğrulayın |
+| WhatsApp Web: sohbet açma (resmî send?phone bağlantısı), metin + başlık-numara doğrulaması, gönder + tik doğrulaması, geçersiz numara tespiti | 🟡 | Gerçek WhatsApp hesabıyla **denenmedi**. WhatsApp arayüzü değişirse işlem "arayüz tanınmadı" hatasıyla durur |
+| Üç gönderim modu: Taslak / Onaylı gönderim (her mesajda önizleme penceresi) / Onaylanmış kuyruk | ✅ (mantık) / 🟡 (gerçek gönderim) | Kuyruk modunda alıcı doğrulanamazsa, hata veya beklenmeyen ekran olursa kuyruk durur |
+| Hazırlık/gönderim ayrımı: uygulama kapanırsa hazırlanmış ama gönderilmemiş mesaj güvenle kuyruğa döner; gönderim anında kapanırsa "durum belirsiz" işaretlenir ve tekrar gönderilmez | ✅ (kod + birim) | |
+| Yerel yapay zekâ (Ollama) seçeneği; yapay zekâ varsayılan olarak kapalı (şablon taslaklar) | 🟡 | Ollama bu bilgisayarda kurulu olmadığı için denenmedi |
+| Fare/klavye ile masaüstü uygulamalarını yönetme (Yöntem B) | ⬜ | Google/Gmail/WhatsApp için gerekmediğinden eklenmedi; tarayıcı CDP ile yönetiliyor, ek işletim sistemi izni gerekmiyor |
+| CAPTCHA, iki adımlı doğrulama, spam kontrolü atlatma / robot algısını gizleme | ⛔ | Bilinçli olarak yapılmadı |
+
+**WhatsApp riski:** WhatsApp, resmî olmayan otomasyonu kullanım koşullarına aykırı sayabilir ve hesabı kısıtlayabilir. Varsayılan mod "Onaylı gönderim", günlük sınır 20'dir.
+
+**Google:** Tarayıcı üzerinden otomatik arama Google'ın kullanım koşullarıyla tam uyumlu değildir; uygulama sorgular arasında bekler, sorgu ve sayfa sayısını sınırlar (varsayılan 6 sorgu × 3 sayfa) ve doğrulama istendiğinde durur. Yoğun kullanımda Google geçici olarak CAPTCHA isteyebilir.
+
+---
+
 
 Durum etiketleri:
 
@@ -104,9 +133,11 @@ Durum etiketleri:
 | Test | Sonuç |
 |---|---|
 | `npm run typecheck` (ana süreç + arayüz, strict TypeScript) | ✅ hatasız |
-| `npm test` — 38 birim testi (kurallar, puanlama, uygunluk, tekrar/birleştirme/ret, teklif hesabı, sırlar, ayarlar, yedek, görev motoru, CSV, robots, SSRF) | ✅ 38/38 |
+| `npm test` — 43 birim testi (0.2: Google sonuç ayrıştırma, WhatsApp alıcı doğrulama, iletişim çıkarma, ad temizleme eklendi); (kurallar, puanlama, uygunluk, tekrar/birleştirme/ret, teklif hesabı, sırlar, ayarlar, yedek, görev motoru, CSV, robots, SSRF) | ✅ 38/38 |
 | `LIVE=1` canlı analiz testi (ucamedya.com.tr) | ✅ |
 | `npm run test:e2e` — derlenmiş uygulama, 21 adım | ✅ 21/21 |
+| `E2E_BROWSER=1 npm run test:e2e` — 22. adım: gerçek Chrome ile Google araştırması (5 şirket, iletişim taraması, taslaklar) | ✅ 22/22 |
+| `LIVE=1 npx vitest run tests/live-browser.test.ts` — Google araması + WhatsApp/Gmail oturum kapalı tespiti | ✅ |
 | `npm run test:e2e -- --exe …` — **paketlenmiş** uygulama, 21 adım | ✅ 21/21 |
 
 Uçtan uca test adımları: açılış ve gerçek sistem kontrolleri · renderer'da Node erişimi olmadığı · bilinmeyen IPC komutunun ve veri klasörü dışı yolun reddi · kurulum sihirbazı · 16 ekranın boş veriyle açılması · anahtarsız araştırmanın sahte başarı göstermemesi · şirket ekleme + yinelenen engeli · gerçek site analizi + 7 ekran görüntüsü + PDF · yeniden analizde sürüm 2 · müşteri kartı · şablon taslak + hesapsız kuyruğa almanın engellenmesi · ret listesindeki şirkete taslak engeli + silinen şirketin ret kaydının korunması · teklif (50.000 TL, %10 indirim, %20 KDV = 54.000 TL) + PDF · görev · yedek + doğrulama · koyu tema · yakalanmamış arayüz hatası olmaması.

@@ -21,8 +21,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     logoPath: '',
     senderName: 'UcaMedya'
   },
-  ai: { provider: 'anthropic', model: 'claude-opus-5-5', openaiModel: 'gpt-5.1', enabled: true },
-  search: { provider: 'google_places', maxQueriesPerResearch: 12 },
+  ai: { provider: 'none', model: 'claude-opus-5-5', openaiModel: 'gpt-5.1', ollamaUrl: 'http://127.0.0.1:11434', ollamaModel: 'qwen3:8b', enabled: true },
+  search: { provider: 'google_browser', maxQueriesPerResearch: 6, pagesPerQuery: 3 },
+  automation: { browser: 'chrome', autoStart: true, previewIntervalSec: 2 },
   analysis: { concurrency: 2, pagespeed: true, maxPages: 4, screenshotMaxWidth: 1440, respectRobots: true, timeoutSec: 30 },
   scoring: { weights: { ...DEFAULT_SCORING_WEIGHTS }, categoryWeights: { ...DEFAULT_CATEGORY_WEIGHTS }, priorityThreshold: 70, highFitThreshold: 55 },
   outreach: {
@@ -35,7 +36,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
     includeOptOutLine: true,
     optOutText: 'Bu tür bilgilendirmeler almak istemiyorsanız bu mesaja "İSTEMİYORUM" yazarak yanıt vermeniz yeterlidir; kaydınız hemen listemizden çıkarılır.',
     openTracking: false,
-    allowPersonalContacts: false
+    allowPersonalContacts: false,
+    emailChannel: 'gmail_web',
+    whatsappChannel: 'web',
+    sendMode: 'confirm',
+    webDailyLimitEmail: 30,
+    webDailyLimitWhatsapp: 20,
+    attachReport: false
   },
   backup: { auto: true, intervalHours: 24, keep: 10, dir: '' },
   security: { lockEnabled: false, lockAfterMinutes: 0 },

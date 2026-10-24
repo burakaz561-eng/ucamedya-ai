@@ -41,7 +41,8 @@ export const RUN_STATUS: Record<string, [string, string]> = {
 
 export const MSG_STATUS: Record<string, [string, string]> = {
   queued: ['Kuyrukta', 'neutral'], sending: ['Gönderiliyor', 'brand'], sent: ['Gönderildi', 'success'], delivered: ['Teslim edildi', 'success'], read: ['Okundu', 'success'],
-  failed: ['Başarısız', 'danger'], cancelled: ['İptal', 'neutral'], blocked: ['Engellendi', 'danger'], test_sent: ['Test gönderimi', 'info'], manual_opened: ['WhatsApp\'ta açıldı', 'warning']
+  failed: ['Başarısız', 'danger'], cancelled: ['İptal', 'neutral'], blocked: ['Engellendi', 'danger'], test_sent: ['Test gönderimi', 'info'], manual_opened: ['WhatsApp\'ta açıldı', 'warning'],
+  preparing: ['Hazırlanıyor', 'brand'], awaiting_confirm: ['Onayınızı bekliyor', 'warning'], draft_saved: ['Gmail taslağında', 'info'], prepared: ['Sohbete yazıldı', 'info'], unverified: ['Doğrulanamadı', 'warning']
 }
 
 export const DRAFT_STATUS: Record<string, [string, string]> = {

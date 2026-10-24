@@ -47,7 +47,8 @@ export class ResearchPipeline {
     private getProvider: (key?: string) => SearchProvider | null,
     private createDrafts: (companyId: number, channels: ('email' | 'whatsapp')[], tone: string) => Promise<void>,
     private makeReport: (researchId: number) => Promise<string>,
-    private emitChange: (scope: string, id?: number) => void
+    private emitChange: (scope: string, id?: number) => void,
+    private crawl: (companyId: number, signal?: AbortSignal) => Promise<number> = async () => 0
   ) {}
 
   private setResult(id: number, patch: { phase?: string; status?: string; message?: string | null; error?: string | null; company_id?: number }) {
@@ -91,8 +92,8 @@ export class ResearchPipeline {
     const researchId = Number(ctx.payload.researchId)
     const rp = this.db.get<{ id: number; name: string; sectors: string; locations: string; customer_types: string; analysis_types: string; outputs: string; target_count: number; provider: string | null; queries: string; status: string }>('SELECT * FROM research_projects WHERE id = ?', researchId)
     if (!rp) throw new Error('Araştırma bulunamadı')
-    const cfg = j<{ steps?: { analyze: boolean; screenshots: boolean; pdf: boolean; drafts: boolean }; channels?: ('email' | 'whatsapp')[]; tone?: string; extraQueries?: string[] }>(rp.outputs, {})
-    const steps = cfg.steps ?? { analyze: true, screenshots: true, pdf: true, drafts: true }
+    const cfg = j<{ steps?: { analyze: boolean; screenshots: boolean; pdf: boolean; drafts: boolean; contacts?: boolean }; channels?: ('email' | 'whatsapp')[]; tone?: string; extraQueries?: string[] }>(rp.outputs, {})
+    const steps = { contacts: true, ...(cfg.steps ?? { analyze: true, screenshots: true, pdf: true, drafts: true }) }
     const sectors = j<string[]>(rp.sectors, [])
     const locations = j<{ city: string; district?: string }[]>(rp.locations, [])
     const customerTypes = j<string[]>(rp.customer_types, [])
@@ -103,7 +104,7 @@ export class ResearchPipeline {
     const st = this.stats(researchId)
     if (!st.discoveryDone && rp.provider !== 'manual') {
       const provider = this.getProvider(rp.provider ?? undefined)
-      if (!provider) throw new Error('Arama sağlayıcısı yapılandırılmamış. Entegrasyonlar sayfasından Google Places, SerpAPI veya Brave anahtarı ekleyin ya da CSV ile manuel içe aktarma yapın.')
+      if (!provider) throw new Error('Arama sağlayıcısı kullanılamıyor. Tarayıcı üzerinden Google araması için Chrome veya Edge gerekir; alternatif olarak CSV ile manuel içe aktarma yapabilirsiniz.')
       const queries = j<string[]>(rp.queries, []).length ? j<string[]>(rp.queries, []) : buildQueries(sectors, locations, cfg.extraQueries ?? [], this.settings.get().search.maxQueriesPerResearch)
       this.db.run('UPDATE research_projects SET queries = ? WHERE id = ?', JSON.stringify(queries), researchId)
       st.queriesRun ??= []
@@ -119,7 +120,7 @@ export class ResearchPipeline {
         ctx.progress(st.found, rp.target_count, `Aranıyor: "${q}"`)
         let hits: SearchHit[] = []
         try {
-          hits = await provider.search(q, { limit: Math.min(60, rp.target_count * 2), signal: ctx.signal })
+          hits = await provider.search(q, { limit: Math.min(60, Math.max(10, (rp.target_count - st.found) * 2)), signal: ctx.signal, maxPages: this.settings.get().search.pagesPerQuery })
         } catch (e) {
           if (e instanceof QuotaError) {
             st.quotaHit = true
@@ -167,6 +168,11 @@ export class ResearchPipeline {
         this.emitChange('research', researchId)
         if (!name?.website) {
           this.db.run("UPDATE companies SET website_status = 'none' WHERE id = ?", row.company_id)
+        } else if (!steps.analyze && steps.contacts) {
+          this.setResult(row.id, { phase: 'contacts', message: 'İletişim bilgileri kontrol ediliyor' })
+          this.emitChange('research', researchId)
+          const n = await this.crawl(row.company_id, ctx.signal)
+          this.setResult(row.id, { message: n ? `${n} iletişim bilgisi bulundu` : 'Sitede iletişim bilgisi bulunamadı' })
         } else if (steps.analyze) {
           this.setResult(row.id, { phase: 'analyzing', message: 'Web sitesi analiz ediliyor' })
           this.emitChange('research', researchId)

@@ -14,8 +14,8 @@ import type { AppSettings } from '@shared/types'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Tab = 'brand' | 'look' | 'analysis' | 'scoring' | 'stages' | 'outreach' | 'backup' | 'security' | 'about'
 
-export default function Settings({ settings, setSettings }: PageProps) {
-  const [tab, setTab] = useState<Tab>('brand')
+export default function Settings({ settings, setSettings, params }: PageProps) {
+  const [tab, setTab] = useState<Tab>((params.tab as Tab) ?? 'brand')
   const [s, setS] = useState<AppSettings>(settings)
   useEffect(() => setS(settings), [settings])
   const { run } = useAction()
@@ -25,8 +25,8 @@ export default function Settings({ settings, setSettings }: PageProps) {
     <div className="col" style={{ gap: 16 }}>
       <div className="page-head"><div><h1>Uygulama Ayarları</h1><p>Tüm ayarlar yerel veritabanında saklanır ve güncellemelerde korunur.</p></div></div>
       <Tabs value={tab} onChange={setTab} items={[
-        { key: 'brand', label: 'Marka' }, { key: 'look', label: 'Görünüm ve robot' }, { key: 'analysis', label: 'Analiz' }, { key: 'scoring', label: 'Puanlama' },
-        { key: 'stages', label: 'Müşteri aşamaları' }, { key: 'outreach', label: 'İletişim ve mevzuat' }, { key: 'backup', label: 'Yedekleme' }, { key: 'security', label: 'Güvenlik ve veri' }, { key: 'about', label: 'Hakkında' }
+        { key: 'brand', label: 'Marka' }, { key: 'outreach', label: 'Mesaj gönderimi' }, { key: 'look', label: 'Görünüm ve robot' }, { key: 'analysis', label: 'Analiz' }, { key: 'scoring', label: 'Puanlama' },
+        { key: 'stages', label: 'Müşteri aşamaları' }, { key: 'backup', label: 'Yedekleme' }, { key: 'security', label: 'Güvenlik ve veri' }, { key: 'about', label: 'Hakkında' }
       ]} />
 
       {tab === 'brand' && <Card><BrandForm settings={settings} onChange={setSettings} /></Card>}
@@ -85,6 +85,32 @@ export default function Settings({ settings, setSettings }: PageProps) {
       {tab === 'outreach' && (
         <Card>
           <div className="col" style={{ gap: 14, maxWidth: 820 }}>
+            <div className="grid g3">
+              <Field label="Gönderim modu">
+                <select className="select" value={s.outreach.sendMode} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, sendMode: e.target.value as AppSettings['outreach']['sendMode'] } })}>
+                  <option value="draft">Taslak — gönderme</option>
+                  <option value="confirm">Onaylı gönderim — her mesajda sor</option>
+                  <option value="queue">Onaylanmış kuyruk — sırayla gönder</option>
+                </select>
+              </Field>
+              <Field label="E-posta kanalı">
+                <select className="select" value={s.outreach.emailChannel} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, emailChannel: e.target.value as AppSettings['outreach']['emailChannel'] } })}>
+                  <option value="gmail_web">Gmail (tarayıcı, API gerekmez)</option>
+                  <option value="smtp">SMTP hesabı (isteğe bağlı)</option>
+                </select>
+              </Field>
+              <Field label="WhatsApp kanalı">
+                <select className="select" value={s.outreach.whatsappChannel} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, whatsappChannel: e.target.value as AppSettings['outreach']['whatsappChannel'] } })}>
+                  <option value="web">WhatsApp Web (tarayıcı)</option>
+                  <option value="click_to_chat">Manuel tıkla-gönder</option>
+                  <option value="cloud_api">WhatsApp Business API (isteğe bağlı)</option>
+                </select>
+              </Field>
+              <Field label="Günlük e-posta sınırı (Gmail web)"><input className="input" type="number" min={1} max={500} value={s.outreach.webDailyLimitEmail} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webDailyLimitEmail: num(e.target.value, 1, 500) } })} /></Field>
+              <Field label="Günlük WhatsApp sınırı (Web)"><input className="input" type="number" min={1} max={200} value={s.outreach.webDailyLimitWhatsapp} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webDailyLimitWhatsapp: num(e.target.value, 1, 200) } })} /></Field>
+            </div>
+            {s.outreach.whatsappChannel === 'web' && <Callout tone="warn">WhatsApp Web otomasyonu WhatsApp kullanım koşullarına aykırı sayılabilir ve hesabınız kısıtlanabilir. Uygulama spam kontrollerini atlatmaya çalışmaz; her mesajdan önce alıcı numarasını ve metni doğrular. Günlük sınırı düşük tutmanız ve "Onaylı gönderim" modunu kullanmanız önerilir.</Callout>}
+            <label className="check"><input type="checkbox" checked={s.outreach.attachReport} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, attachReport: e.target.checked } })} /><div><b>E-postaya PDF analiz raporunu ekle</b><div className="small muted">Gmail üzerinden gönderimde son analiz raporu eklenir.</div></div></label>
             <label className="check"><input type="checkbox" checked={s.outreach.testMode} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, testMode: e.target.checked } })} /><div><b>Test modu</b><div className="small muted">Açıkken hiçbir gerçek şirkete mesaj gitmez; tüm gönderimler test alıcısına yönlendirilir.</div></div></label>
             <div className="grid g2">
               <Field label="Test e-posta alıcısı"><input className="input" value={s.outreach.testRecipientEmail} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, testRecipientEmail: e.target.value } })} /></Field>

@@ -72,7 +72,8 @@ await step('açılış ekranı ve gerçek sistem kontrolleri', async () => {
   await shot('01-acilis')
   await page.getByText('Şema sürümü').waitFor({ timeout: 20000 })
   const txt = await page.locator('.splash').innerText()
-  if (!/anahtarı tanımlanmamış/.test(txt)) throw new Error('AI anahtarı yokken uyarı gösterilmedi')
+  if (!/isteğe bağlı ve kapalı/.test(txt)) throw new Error('Yapay zekâ kapalıyken doğru bilgi gösterilmedi')
+  if (!/Tarayıcı bulundu/.test(txt)) throw new Error('Tarayıcı tespiti gösterilmedi')
 })
 
 await step('güvenlik: renderer içinde Node.js erişimi yok', async () => {
@@ -89,7 +90,7 @@ await step('güvenlik: bilinmeyen IPC komutu reddediliyor', async () => {
 
 await step('açılışı atla → kurulum sihirbazı', async () => {
   await page.getByRole('button', { name: /Atla/ }).click()
-  await page.getByText('Kurulum sihirbazı').waitFor({ timeout: 15000 })
+  await page.getByRole('heading', { name: 'Logo ve marka' }).waitFor({ timeout: 15000 })
   await page.waitForTimeout(1500)
   await shot('02-sihirbaz-marka')
 })
@@ -107,7 +108,7 @@ await step('sihirbaz: veri klasörü ve test modu, adımları geç', async () =>
 })
 
 const pages = [
-  ['AI Müşteri Bulucu', 'finder'], ['Sektör Araştırması', 'research'], ['Web Sitesi Analizi', 'analysis'], ['Müşteri Havuzu', 'companies'],
+  ['Canlı Kontrol Merkezi', 'control'], ['AI Müşteri Bulucu', 'finder'], ['Sektör Araştırması', 'research'], ['Web Sitesi Analizi', 'analysis'], ['Müşteri Havuzu', 'companies'],
   ['İletişim Merkezi', 'communication'], ['E-posta Kampanyaları', 'email'], ['WhatsApp İşlemleri', 'whatsapp'], ['AI Mesaj Stüdyosu', 'studio'],
   ['Teklif ve Satış', 'offers'], ['Takip Planlayıcısı', 'followup'], ['Raporlar ve Analitik', 'reports'], ['Dosya Merkezi', 'files'],
   ['Entegrasyonlar', 'integrations'], ['Görevler ve Otomasyonlar', 'automations'], ['Uygulama Ayarları', 'settings']
@@ -123,8 +124,8 @@ await step('16 menü ekranının tamamı açılıyor (boş veriyle)', async () =
   if (errors.length) throw new Error(`Sayfa hataları: ${errors.slice(0, 3).join(' | ')}`)
 })
 
-await step('araştırma: sağlayıcı anahtarı yokken sahte başarı yok', async () => {
-  const r = await page.evaluate(() => window.api.invoke('research:start', { name: 'Test', sectors: ['İnşaat'], locations: [{ city: 'Kocaeli' }], customerTypes: [], analysisTypes: [], targetCount: 10, steps: { analyze: true, screenshots: true, pdf: true, drafts: true }, channels: ['email'], tone: 'professional' }).then(() => 'başladı', (e) => e.message))
+await step('araştırma: API sağlayıcısı seçilip anahtar yokken sahte başarı yok', async () => {
+  const r = await page.evaluate(() => window.api.invoke('research:start', { name: 'Test', provider: 'google_places', sectors: ['İnşaat'], locations: [{ city: 'Kocaeli' }], customerTypes: [], analysisTypes: [], targetCount: 10, steps: { analyze: true, screenshots: true, pdf: true, drafts: true }, channels: ['email'], tone: 'professional' }).then(() => 'başladı', (e) => e.message))
   if (!/API anahtarı yok/.test(r)) throw new Error(r)
 })
 
@@ -219,6 +220,29 @@ await step('görev + hatırlatıcı kaydı', async () => {
   const t = await inv('tasks:list', { status: 'active' })
   if (!t.length) throw new Error('Görev listelenmedi')
 })
+
+if (process.env.E2E_BROWSER === '1') {
+  await step('tarayıcı ile gerçek Google araştırması (5 şirket, iletişim taraması)', async () => {
+    const rid = await inv('research:start', { name: 'E2E tarayıcı araştırması', sectors: ['Mimarlık'], locations: [{ city: 'Kocaeli' }], customerTypes: [], analysisTypes: [], targetCount: 5, provider: 'google_browser', steps: { analyze: false, screenshots: false, pdf: false, drafts: true, contacts: true }, channels: ['email', 'whatsapp'], tone: 'professional' })
+    await ensureShown()
+    await page.locator('.nav-item', { hasText: 'Canlı Kontrol Merkezi' }).click()
+    const end = Date.now() + 300000
+    let r
+    for (;;) {
+      r = await inv('research:get', { id: rid })
+      if (['completed', 'failed'].includes(r.status) || Date.now() > end) break
+      if (r.results.length && !globalThis.__shot) { globalThis.__shot = 1; await page.waitForTimeout(2500); await shot('12-canli-kontrol') }
+      await page.waitForTimeout(2000)
+    }
+    if (r.status !== 'completed') throw new Error(`Araştırma: ${r.status} ${r.error ?? ''} ${r.run?.error ?? ''}`)
+    const found = r.results.filter((x) => x.status === 'done')
+    console.log('   bulunan:', r.results.map((x) => `${x.name ?? x.raw_name} [${x.status}] ${x.website ?? 'site yok'}`).join(' | '))
+    if (found.length < 3) throw new Error(`Yalnızca ${found.length} şirket işlendi`)
+    const withPhone = (await Promise.all(found.map((x) => inv('companies:get', { id: x.company_id })))).filter((c) => c.contacts.some((k) => k.type === 'phone'))
+    if (!withPhone.length) throw new Error('Hiçbir şirkette telefon bulunamadı')
+    await inv('agent:stop')
+  })
+}
 
 await step('yedek oluşturma + doğrulama', async () => {
   const runId = await inv('backup:create')

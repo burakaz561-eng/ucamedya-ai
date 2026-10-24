@@ -9,7 +9,7 @@ export type Param = SQLInputValue | boolean | undefined
 export type Row = Record<string, unknown>
 
 export const INTEGRATION_KEYS = [
-  'google_places', 'serpapi', 'brave', 'pagespeed', 'browser', 'ai', 'email', 'whatsapp', 'gmail_oauth', 'm365_oauth', 'crm', 'cloud_storage'
+  'google_browser', 'gmail_web', 'whatsapp_web', 'google_places', 'serpapi', 'brave', 'pagespeed', 'browser', 'ai', 'email', 'whatsapp', 'gmail_oauth', 'm365_oauth', 'crm', 'cloud_storage'
 ] as const
 
 export class Db {

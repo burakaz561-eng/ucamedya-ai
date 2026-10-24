@@ -17,6 +17,8 @@ import { EMAIL_PRESETS } from './outreach/channels'
 import { isOpenableUrl } from './http/url-safety'
 import tr from '@shared/data/tr-cities.json'
 import { APP_NAME } from '@shared/constants'
+import { detectBrowsers } from './automation/agent-browser'
+import { phoneKey, emailKey } from '@shared/text'
 
 type Handler = (p: any) => unknown // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -145,11 +147,11 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
       const v = z.object({
         name: str(120).min(1), sectors: z.array(str(80)).max(30), locations: z.array(z.object({ city: str(60), district: optStr(60) })).max(40),
         customerTypes: z.array(str(40)).max(20), analysisTypes: z.array(str(40)).max(10), targetCount: z.number().int().min(1).max(500),
-        provider: z.enum(['google_places', 'serpapi', 'brave']).optional(), extraQueries: z.array(str(120)).max(20).optional(),
-        steps: z.object({ analyze: z.boolean(), screenshots: z.boolean(), pdf: z.boolean(), drafts: z.boolean() }), channels: z.array(z.enum(['email', 'whatsapp'])).max(2), tone: str(30), profileId: id.optional()
+        provider: z.enum(['google_browser', 'google_places', 'serpapi', 'brave']).optional(), extraQueries: z.array(str(120)).max(20).optional(),
+        steps: z.object({ analyze: z.boolean(), screenshots: z.boolean(), pdf: z.boolean(), drafts: z.boolean(), contacts: z.boolean().optional() }), channels: z.array(z.enum(['email', 'whatsapp'])).max(2), tone: str(30), profileId: id.optional()
       }).parse(p)
       const provider = v.provider ?? s.settings.get().search.provider
-      if (provider === 'manual' || !s.searchProvider(provider)) throw new Error('Seçilen arama sağlayıcısının API anahtarı yok. Entegrasyonlar sayfasından ekleyin veya "CSV içe aktar" ile manuel liste kullanın.')
+      if (provider === 'manual' || !s.searchProvider(provider)) throw new Error(provider === 'google_browser' ? 'Google Chrome veya Microsoft Edge bulunamadı; tarayıcı üzerinden arama yapılamaz. "CSV içe aktar" ile manuel liste kullanabilirsiniz.' : 'Seçilen arama sağlayıcısının API anahtarı yok. Entegrasyonlar sayfasından ekleyin veya "CSV içe aktar" ile manuel liste kullanın.')
       const rid = s.db.run('INSERT INTO research_projects(name, sectors, locations, customer_types, analysis_types, outputs, target_count, provider, profile_id, status) VALUES (?,?,?,?,?,?,?,?,?,?)',
         v.name, JSON.stringify(v.sectors), JSON.stringify(v.locations.map((l) => ({ city: l.city, ...(l.district ? { district: l.district } : {}) }))), JSON.stringify(v.customerTypes), JSON.stringify(v.analysisTypes),
         JSON.stringify({ steps: v.steps, channels: v.channels, tone: v.tone, extraQueries: v.extraQueries ?? [] }), v.targetCount, provider, v.profileId ?? null, 'queued').lastInsertRowid
@@ -282,6 +284,70 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'outreach:cancel': (p) => s.outreach.cancelQueue(z.enum(['email', 'whatsapp']).parse(p?.channel)),
     'outreach:messages': (p) => s.outreach.listMessages(z.object({ channel: optStr(20), status: optStr(20), limit: z.number().int().max(5000).optional() }).parse(p ?? {}) as { channel?: string; status?: string; limit?: number }),
     'outreach:retry': (p) => s.outreach.retry(id.parse(p?.id)),
+    'outreach:decide': (p) => s.outreach.decide(id.parse(p?.messageId), z.enum(['send', 'skip', 'stop']).parse(p?.decision)),
+
+    // ---------------- Ajan tarayıcısı (Canlı Kontrol Merkezi) ----------------
+    'agent:browsers': () => detectBrowsers().map((b) => ({ kind: b.kind, label: b.label })),
+    'agent:status': () => s.agent.status(),
+    'agent:start': async (p) => {
+      if (p?.kind) s.settings.update({ automation: { ...s.settings.get().automation, browser: z.enum(['chrome', 'edge']).parse(p.kind) } })
+      await s.ensureAgent()
+      return s.agent.status()
+    },
+    'agent:stop': async () => {
+      await s.agent.close()
+      return s.agent.status()
+    },
+    'agent:preview': () => s.agent.preview(),
+    'agent:answer': (p) => s.agent.answerUser(z.boolean().parse(p?.ok)),
+    'agent:openLogin': async (p) => {
+      const svc = z.enum(['google', 'gmail', 'whatsapp']).parse(p?.service)
+      await s.ensureAgent()
+      const role = svc === 'whatsapp' ? 'whatsapp' : svc === 'gmail' ? 'gmail' : 'site'
+      const page = await s.agent.page(role)
+      s.agent.touch(page)
+      await page.goto(svc === 'whatsapp' ? 'https://web.whatsapp.com/' : svc === 'gmail' ? 'https://mail.google.com/mail/u/0/' : 'https://accounts.google.com/', { waitUntil: 'domcontentloaded' })
+      await page.bringToFront()
+      s.agent.report({ state: 'needs_user', step: svc === 'whatsapp' ? 'WhatsApp Web açıldı: QR kodu telefonunuzla taratın' : 'Google giriş sayfası açıldı: hesabınıza kendiniz giriş yapın' })
+    },
+    'agent:checkSessions': async () => {
+      await s.ensureAgent()
+      const gm = await s.gmail.status().catch(() => ({ loggedIn: false, account: null }))
+      const wa = await s.agent.run(() => s.wa.status()).catch(() => 'unknown')
+      const google = await s.agent.run(async () => {
+        const page = await s.agent.page('site')
+        await page.goto('https://myaccount.google.com/', { waitUntil: 'domcontentloaded', timeout: 30000 })
+        return /myaccount\.google\.com/.test(page.url()) && !/signin|ServiceLogin/.test(page.url())
+      }).catch(() => false)
+      s.agent.report({ state: 'ready', step: 'Oturumlar kontrol edildi' })
+      return { google, gmail: gm.loggedIn, gmailAccount: gm.account, whatsapp: wa === 'logged_in', whatsappState: wa }
+    },
+    'agent:testSearch': async (p) => {
+      await s.ensureAgent()
+      const hits = await s.google.search(str(200).parse(p?.query ?? 'mimarlık ofisi Kocaeli'), { limit: 8, maxPages: 1 })
+      return hits
+    },
+    'agent:testGmailDraft': async (p) => {
+      await s.ensureAgent()
+      await s.gmail.ensureLoggedIn()
+      const st = await s.gmail.status()
+      const to = emailKey(String(p?.to ?? '')) || st.account
+      if (!to) throw new Error('Test taslağı için alıcı e-posta adresi gerekli.')
+      const r = await s.gmail.prepare({ to, subject: 'UcaMedya AI — test taslağı', body: 'Bu e-posta UcaMedya AI kurulum testinde oluşturuldu ve GÖNDERİLMEDİ. Taslaklar klasöründen silebilirsiniz.' })
+      if (!r.ok) throw new Error(r.reason)
+      await s.gmail.saveDraft()
+      return { ok: true, message: `Gmail taslağı oluşturuldu (alıcı: ${to}) ve gönderilmeden Taslaklar'a kaydedildi.` }
+    },
+    'agent:testWhatsapp': async (p) => {
+      const ph = phoneKey(str(40).parse(p?.phone ?? ''))
+      if (!ph) throw new Error('Geçerli bir telefon numarası girin (kendi numaranız önerilir).')
+      await s.ensureAgent()
+      await s.wa.ensureLoggedIn()
+      const r = await s.wa.prepare(ph, 'UcaMedya AI test mesajı — gönderilmedi.')
+      if (!r.ok) throw new Error(r.reason)
+      await s.wa.clearCompose()
+      return { ok: true, message: `Sohbet açıldı ve test metni yazıldı, sonra silindi (GÖNDERİLMEDİ). Alıcı doğrulaması: ${r.recipientVerified ? 'numara eşleşti' : r.reason ?? r.headerText}` }
+    },
     'outreach:manualNext': () => s.outreach.openNextManual(),
     'outreach:manualMark': (p) => s.outreach.markManual(id.parse(p?.id), z.boolean().parse(p?.sent)),
     'outreach:syncReplies': () => s.jobs.enqueue('reply_sync', 'E-posta yanıtlarını kontrol et', {}),

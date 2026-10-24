@@ -3,7 +3,7 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 
-const EVENTS = new Set(['job', 'data-changed', 'notification'])
+const EVENTS = new Set(['job', 'data-changed', 'notification', 'agent', 'outreach-confirm'])
 
 const api = {
   invoke(channel: string, payload?: unknown): Promise<unknown> {

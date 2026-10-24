@@ -329,3 +329,48 @@ describe('görev motoru', () => {
     expect(r.error).toContain('kota')
   })
 })
+
+// ---------- Tarayıcı otomasyonu ayrıştırıcıları ----------
+import { parseLocalRow, parseOrganic } from '../src/main/automation/google-browser'
+import { headerMatchesPhone } from '../src/main/automation/whatsapp-web'
+import { extractContacts } from '../src/main/research/contact-crawler'
+
+describe('Google sonuç ayrıştırma', () => {
+  it('yerel işletme satırından telefon, ilçe/il, kategori ve puan çıkarır', () => {
+    const r = parseLocalRow({ name: 'UG İNŞAAT', web: null, lines: ['UG İNŞAAT', '4,7(12)', '· İnşaat Şirketi', '10 yıldan daha uzun süre önce açıldı · İzmit/Kocaeli', 'Açık · Kapanış saati: 21:00 · 0541 300 14 41'] })
+    expect(r).toMatchObject({ name: 'UG İNŞAAT', phone: '0541 300 14 41', district: 'İzmit', city: 'Kocaeli', rating: 4.7, ratingCount: 12, category: 'İnşaat Şirketi', businessStatus: 'OPERATIONAL' })
+    const r2 = parseLocalRow({ name: 'Sefa Töle', web: null, lines: ['Sefa Töle', '4,9(87)', '35 yıldan daha uzun süre önce açıldı · İzmit/Kocaeli', 'Kapalı ⋅ Açılış zamanı: Pzt 09:00 · (0262) 255 56 76'] })
+    expect(r2.phone).toBe('(0262) 255 56 76')
+  })
+  it('organik sonuçta rehber/belge sitelerini eler, genel başlıkta alan adını kullanır', () => {
+    expect(parseOrganic({ title: 'Kocaeli Inşaat Firmaları', cite: 'https://www.scribd.com › document' })).toBeNull()
+    expect(parseOrganic({ title: 'En İyi 40 Kocaeli Müteahhit Firma', cite: 'https://www.ornekrehber.com' })).toBeNull()
+    expect(parseOrganic({ title: 'Kocaeli İnşaat Firması Villa Konut Yapımı', cite: 'https://goksallarinsaat.com' })).toEqual({ name: 'goksallarinsaat.com', website: 'https://goksallarinsaat.com' })
+    expect(parseOrganic({ title: 'Türköz İnşaat | KOCAELİ', cite: 'https://www.turkozinsaat.com.tr › anasayfa' })).toEqual({ name: 'Türköz İnşaat', website: 'https://www.turkozinsaat.com.tr' })
+    expect(parseOrganic({ title: 'X', cite: 'https://yandex.com.tr › Yandex Maps' })).toBeNull()
+  })
+})
+
+describe('WhatsApp alıcı doğrulama', () => {
+  it('sohbet başlığındaki numara alıcıyla eşleşmeli', () => {
+    expect(headerMatchesPhone('+90 532 111 22 33 çevrimiçi', '905321112233')).toBe(true)
+    expect(headerMatchesPhone('+90 532 111 22 34', '905321112233')).toBe(false)
+    expect(headerMatchesPhone('Ahmet Yılmaz', '905321112233')).toBe(false)
+  })
+})
+
+describe('iletişim bilgisi çıkarma', () => {
+  it('kurumsal e-posta, tel: bağlantısı, metindeki telefon ve wa.me', () => {
+    const html = '<a href="mailto:info@ornek.com.tr">x</a><a href="tel:+902621112233">Ara</a><p>Tel: 0532 111 22 33</p><a href="https://wa.me/905321112233">WA</a><img src="logo@2x.png"><script>var a="spam@x.com"</script>'
+    const c = extractContacts(html, 'https://ornek.com.tr/iletisim')
+    expect(c.map((x) => `${x.type}:${x.value}`).sort()).toEqual(['email:info@ornek.com.tr', 'phone:902621112233', 'phone:905321112233', 'whatsapp:905321112233'])
+  })
+})
+
+import { cleanBusinessName } from '../src/shared/text'
+describe('işletme adı temizleme', () => {
+  it('emoji ve süs karakterlerini kaldırır', () => {
+    expect(cleanBusinessName('🛠️ Maker Mimarlık Renovasyon ☀️ İç Mimari & Proje')).toBe('Maker Mimarlık Renovasyon İç Mimari & Proje')
+    expect(cleanBusinessName('★ UG İNŞAAT ★')).toBe('UG İNŞAAT')
+  })
+})

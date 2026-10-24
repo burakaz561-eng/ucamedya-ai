@@ -12,7 +12,13 @@ import { PoliteFetcher } from '../http/fetcher'
 import { SiteAnalyzer } from '../analysis/analyzer'
 import { browserCheck } from '../analysis/browser'
 import { PageSpeedClient } from '../integrations/pagespeed'
-import { AnthropicProvider, OpenAiProvider, type AiProvider } from '../integrations/ai/ai-client'
+import { AnthropicProvider, OllamaProvider, OpenAiProvider, type AiProvider } from '../integrations/ai/ai-client'
+import { AgentBrowser, detectBrowsers, type AgentEvent } from '../automation/agent-browser'
+import { GoogleBrowserSearch } from '../automation/google-browser'
+import { WhatsAppWeb } from '../automation/whatsapp-web'
+import { GmailWeb } from '../automation/gmail-web'
+import { crawlContacts } from '../research/contact-crawler'
+import { log } from '../logger'
 import { GooglePlacesProvider, SerpApiProvider, BraveProvider, type SearchProvider } from '../integrations/search/providers'
 import { AnalysisService } from './analysis-service'
 import { JobEngine } from '../jobs/engine'
@@ -46,6 +52,10 @@ export class AppServices {
   readonly offers: OfferService
   readonly stats: StatsService
   readonly backups: BackupService
+  readonly agent: AgentBrowser
+  readonly google: GoogleBrowserSearch
+  readonly wa: WhatsAppWeb
+  readonly gmail: GmailWeb
   private aiCache: { key: string; p: AiProvider } | null = null
 
   constructor(
@@ -63,6 +73,10 @@ export class AppServices {
     this.companies = new CompanyService(this.db, this.files)
     this.http = new PoliteFetcher(fetch, 1500)
     const change = (scope: string, id?: number) => this.emit('data-changed', { scope, id })
+    this.agent = new AgentBrowser(paths.userData, (ev: AgentEvent) => this.emit('agent', ev), (m) => log('info', m))
+    this.google = new GoogleBrowserSearch(this.agent)
+    this.wa = new WhatsAppWeb(this.agent)
+    this.gmail = new GmailWeb(this.agent)
     this.analysis = new AnalysisService(this.db, this.files, this.companies, this.settings, new SiteAnalyzer(this.http), () => this.pagespeed(), () => this.ai(), change)
     this.jobs = new JobEngine(this.db, () => this.settings.get().analysis.concurrency + 1, (ev: JobEvent) => this.emit('job', ev))
     this.outreach = new OutreachService(this.db, this.companies, this.settings, this.secrets, this.files, () => this.ai(), change)
@@ -74,7 +88,19 @@ export class AppServices {
       (k) => this.searchProvider(k),
       (cid, ch, tone) => this.outreach.createDrafts(cid, ch, tone),
       (rid) => this.researchReport(rid),
-      change
+      change,
+      async (companyId, signal) => {
+        const site = this.db.get<{ website: string | null }>('SELECT website FROM companies WHERE id = ?', companyId)?.website
+        if (!site) return 0
+        const found = await crawlContacts(this.http, site, signal)
+        for (const c of found) this.companies.addContact(companyId, { type: c.type, value: c.value, sourceUrl: c.sourceUrl, sourceType: 'website', verified: false })
+        if (found.length) this.companies.log(companyId, 'İletişim bilgileri bulundu', `${found.length} kayıt (kaynak: şirketin web sitesi)`, 'system')
+        return found.length
+      }
+    )
+    this.outreach.attachWeb(
+      { agent: this.agent, wa: this.wa, gmail: this.gmail, ensureStarted: () => this.ensureAgent(), available: () => detectBrowsers().length > 0 },
+      (r) => this.emit('outreach-confirm', r)
     )
     this.registerJobs()
   }
@@ -156,10 +182,25 @@ export class AppServices {
     return out
   }
 
+  /** Ajan tarayıcısını ayarlardaki tarayıcıyla başlatır (zaten açıksa dokunmaz). */
+  async ensureAgent() {
+    if (this.agent.isRunning()) return
+    const pref = this.settings.get().automation.browser
+    const avail = detectBrowsers()
+    const kind = avail.find((b) => b.kind === pref)?.kind ?? avail[0]?.kind
+    if (!kind) throw new Error('Google Chrome veya Microsoft Edge bulunamadı. Tarayıcı üzerinden çalışmak için birini kurun.')
+    await this.agent.start(kind)
+  }
+
   // ---------- Entegrasyon istemcileri ----------
   ai(): AiProvider | null {
     const s = this.settings.get().ai
     if (!s.enabled || s.provider === 'none') return null
+    if (s.provider === 'ollama') {
+      const ck = `ollama:${s.ollamaUrl}:${s.ollamaModel}`
+      if (this.aiCache?.key !== ck) this.aiCache = { key: ck, p: new OllamaProvider(s.ollamaUrl, s.ollamaModel) }
+      return this.aiCache.p
+    }
     const key = s.provider === 'openai' ? this.secrets.get('openai_key') : this.secrets.get('anthropic_key')
     if (!key) return null
     const model = s.provider === 'openai' ? s.openaiModel : s.model
@@ -177,6 +218,22 @@ export class AppServices {
 
   searchProvider(key?: string): SearchProvider | null {
     const k = key ?? this.settings.get().search.provider
+    if (k === 'google_browser') {
+      if (!detectBrowsers().length) return null
+      const g = this.google
+      return {
+        key: 'google_browser',
+        label: g.label,
+        search: async (q, o) => {
+          await this.ensureAgent()
+          return g.search(q, o)
+        },
+        test: async () => {
+          await this.ensureAgent()
+          return g.test()
+        }
+      }
+    }
     if (k === 'google_places') {
       const v = this.secrets.get('google_places_key')
       return v ? new GooglePlacesProvider(this.http, v) : null
@@ -201,6 +258,7 @@ export class AppServices {
     let res: { ok: boolean; message: string }
     try {
       switch (key) {
+        case 'google_browser':
         case 'google_places':
         case 'serpapi':
         case 'brave': {
@@ -246,6 +304,18 @@ export class AppServices {
         }
         case 'whatsapp': {
           res = await this.testWhatsapp()
+          break
+        }
+        case 'gmail_web': {
+          await this.ensureAgent()
+          const st = await this.gmail.status()
+          res = st.loggedIn ? { ok: true, message: `Gmail oturumu açık${st.account ? ` (${st.account})` : ''}. E-postalar bu hesaptan, tarayıcı üzerinden hazırlanır.` } : { ok: false, message: 'Gmail oturumu kapalı. Kontrol Merkezi’nden "Gmail’e giriş yap" ile otomasyon tarayıcısında giriş yapın.' }
+          break
+        }
+        case 'whatsapp_web': {
+          await this.ensureAgent()
+          const st = await this.agent.run(() => this.wa.status())
+          res = st === 'logged_in' ? { ok: true, message: 'WhatsApp Web oturumu açık.' } : { ok: false, message: st === 'qr' ? 'WhatsApp Web oturumu kapalı: QR kodu telefonunuzla taratın.' : 'WhatsApp Web yüklenemedi; tekrar deneyin.' }
           break
         }
         case 'gmail_oauth':
@@ -311,7 +381,8 @@ export class AppServices {
     const ic = this.db.integrityOk()
     out.push({ key: 'db', label: 'Yerel veritabanı kontrol ediliyor', ok: ic.ok, status: ic.ok ? 'ok' : 'error', message: ic.ok ? `Şema sürümü ${this.db.schemaVersion()}, bütünlük doğrulandı.` : `Bütünlük hatası: ${ic.message}` })
     const ai = this.ai()
-    if (!ai) out.push({ key: 'ai', label: 'Yapay zekâ bağlantısı kontrol ediliyor', ok: false, status: 'warn', message: 'Yapay zekâ anahtarı tanımlanmamış; taslaklar şablonla üretilecek.' })
+    const aiOff = this.settings.get().ai.provider === 'none' || !this.settings.get().ai.enabled
+    if (!ai) out.push({ key: 'ai', label: 'Yapay zekâ bağlantısı kontrol ediliyor', ok: aiOff, status: aiOff ? 'ok' : 'warn', message: aiOff ? 'Yapay zekâ isteğe bağlı ve kapalı; mesaj taslakları hazır şablonlarla, analiz bulgularına göre üretilecek.' : 'Seçilen yapay zekâ sağlayıcısının anahtarı yok; taslaklar şablonla üretilecek.' })
     else {
       try {
         await Promise.race([ai.ping(), new Promise((_, rej) => setTimeout(() => rej(new Error('8 sn içinde yanıt alınamadı')), 8000))])
@@ -320,6 +391,7 @@ export class AppServices {
         out.push({ key: 'ai', label: 'Yapay zekâ bağlantısı kontrol ediliyor', ok: false, status: 'error', message: (e as Error).message })
       }
     }
+    const browsers = detectBrowsers()
     const ints = this.db.all<{ key: string; status: string; last_error: string | null }>('SELECT key, status, last_error FROM integrations')
     const configured = ints.filter((i) => i.status !== 'not_configured')
     const broken = configured.filter((i) => i.status === 'error')
@@ -327,9 +399,9 @@ export class AppServices {
     out.push({
       key: 'integrations',
       label: 'İzin verilen entegrasyonlar kontrol ediliyor',
-      ok: broken.length === 0 && !!sp,
-      status: broken.length ? 'error' : sp ? 'ok' : 'warn',
-      message: [sp ? `Arama sağlayıcısı hazır (${sp.label}).` : 'Arama sağlayıcısı anahtarı yok; manuel CSV içe aktarma kullanılabilir.', broken.length ? `Son testte hata veren: ${broken.map((b) => b.key).join(', ')}.` : ''].filter(Boolean).join(' ')
+      ok: broken.length === 0 && !!sp && browsers.length > 0,
+      status: broken.length || !browsers.length ? 'error' : sp ? 'ok' : 'warn',
+      message: [browsers.length ? `Tarayıcı bulundu: ${browsers.map((b) => b.label).join(', ')}. Google, Gmail ve WhatsApp oturumları Kontrol Merkezi’nden kontrol edilir.` : 'Chrome veya Edge bulunamadı; tarayıcı üzerinden arama ve gönderim yapılamaz.', sp && sp.key !== 'google_browser' ? `Arama: ${sp.label}.` : '', broken.length ? `Son testte hata veren: ${broken.map((b) => b.key).join(', ')}.` : ''].filter(Boolean).join(' ')
     })
     const interrupted = this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM automation_runs WHERE status = 'interrupted'")?.n ?? 0
     const dataDir = this.files.root()
@@ -339,6 +411,7 @@ export class AppServices {
 
   close() {
     this.jobs.cancelAll()
+    void this.agent.close()
     this.db.close()
   }
 }

@@ -1,4 +1,6 @@
-# API Bağlantılarını Yapılandırma Rehberi
+# API Bağlantılarını Yapılandırma Rehberi (isteğe bağlı)
+
+> **0.2 sürümünden itibaren temel kullanım için hiçbir API gerekmez.** Google araması, Gmail ve WhatsApp Web bilgisayarınızdaki tarayıcı üzerinden çalışır (bkz. [TARAYICI-ILE-KULLANIM.md](TARAYICI-ILE-KULLANIM.md)). Bu belgedeki API'ler yalnızca isterseniz kullanılır: daha yüksek hacim, resmî WhatsApp Business hesabı, PageSpeed ölçümleri veya bulut yapay zekâ için.
 
 Tüm anahtarlar **Entegrasyonlar** sayfasından (veya kurulum sihirbazından) girilir, Windows DPAPI / macOS Anahtar Zinciri ile şifrelenir, arayüze geri gösterilmez ve günlüklere yazılmaz. Her kartta **Test et** düğmesi gerçek bir istek yapar; başarısız test asla başarılı gösterilmez.
 

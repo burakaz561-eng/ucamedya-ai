@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Radar, Factory, ScanSearch, Users, MessagesSquare, Mail, MessageCircle, Sparkles, FileSignature, CalendarClock,
-  BarChart3, FolderOpen, Plug, Workflow, Settings as SettingsIcon, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
+  BarChart3, FolderOpen, Plug, Workflow, Settings as SettingsIcon, MonitorPlay, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
 } from 'lucide-react'
 import { call, useApi, useJobEvents } from './lib/api'
 import { NavCtx, useNav, type PageKey, type Route } from './lib/nav'
@@ -12,12 +12,14 @@ import { Robot, RobotPrefs } from './robot/Robot'
 import { Splash } from './pages/Splash'
 import { Wizard } from './pages/Wizard'
 import { CompanyDrawer } from './pages/CompanyDrawer'
+import { SendConfirm, AgentNeedsUser } from './components/SendConfirm'
 import type { AppSettings } from '@shared/types'
 import type { RobotMood } from './robot/robot-model'
 import logoDark from './assets/uca-medya-logo-dark.svg'
 import logoLight from './assets/uca-medya-logo-light.svg'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const ControlCenter = lazy(() => import('./pages/ControlCenter'))
 const Finder = lazy(() => import('./pages/Finder'))
 const Research = lazy(() => import('./pages/Research'))
 const Analysis = lazy(() => import('./pages/Analysis'))
@@ -36,6 +38,7 @@ const SettingsPage = lazy(() => import('./pages/Settings'))
 
 export const NAV: { key: PageKey; label: string; icon: typeof Radar; group?: string }[] = [
   { key: 'dashboard', label: 'Genel Bakış', icon: LayoutDashboard, group: 'Merkez' },
+  { key: 'control', label: 'Canlı Kontrol Merkezi', icon: MonitorPlay },
   { key: 'finder', label: 'AI Müşteri Bulucu', icon: Radar, group: 'Keşif' },
   { key: 'research', label: 'Sektör Araştırması', icon: Factory },
   { key: 'analysis', label: 'Web Sitesi Analizi', icon: ScanSearch },
@@ -150,7 +153,7 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
     return () => window.removeEventListener('keydown', h)
   }, [go])
 
-  const Page = { dashboard: Dashboard, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
+  const Page = { dashboard: Dashboard, control: ControlCenter, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
   const counts: Partial<Record<PageKey, number>> = { studio: dash?.draftsPending ?? 0, companies: dash?.reviewPending ?? 0 }
   const dark = settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   let lastGroup = ''
@@ -201,6 +204,8 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
       </div>
       {company != null && <CompanyDrawer id={company} onClose={() => setCompany(null)} />}
       <RobotNotifier enabled={settings.robotAnimations} />
+      <SendConfirm />
+      <AgentNeedsUser />
     </NavCtx.Provider>
   )
 }

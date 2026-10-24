@@ -20,7 +20,10 @@ export default function WhatsAppPage({ settings }: PageProps) {
         </div>
         <div className="actions"><Btn icon={<Settings2 />} onClick={() => setCfg(true)}>Yapılandır</Btn></div>
       </div>
-      <Card title="Hesap durumu">
+      {settings.outreach.whatsappChannel === 'web' && (
+        <Callout tone="warn"><b>WhatsApp Web (tarayıcı) kanalı kullanılıyor.</b> Sohbetler otomasyon tarayıcısında açılır; her mesajdan önce alıcı numarası ve metin doğrulanır, seçtiğiniz moda göre ({settings.outreach.sendMode === 'draft' ? 'taslak' : settings.outreach.sendMode === 'confirm' ? 'her mesajda onay' : 'onaylanmış kuyruk'}) gönderilir. Resmî olmayan otomasyon WhatsApp kullanım koşullarına aykırı sayılabilir ve hesap kısıtlaması riski taşır.</Callout>
+      )}
+      <Card title={settings.outreach.whatsappChannel === 'web' ? 'API / manuel yöntem ayarları (isteğe bağlı)' : 'Hesap durumu'}>
         {!wa ? <Callout tone="warn">WhatsApp yapılandırılmamış. "Yapılandır" ile manuel (önerilen başlangıç) veya resmî API modunu seçin.</Callout> : (
           <div className="row wrap">
             <Badge tone={wa.status === 'ok' ? 'success' : wa.status === 'error' ? 'danger' : 'neutral'} dot>{wa.status === 'ok' ? 'Hazır' : wa.status === 'error' ? 'Hata' : 'Test edilmedi'}</Badge>

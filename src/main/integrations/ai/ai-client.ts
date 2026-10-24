@@ -118,6 +118,61 @@ export class OpenAiProvider implements AiProvider {
   }
 }
 
+/** Bilgisayarda çalışan yerel model (Ollama). API anahtarı gerekmez; veriler bilgisayardan çıkmaz. */
+export class OllamaProvider implements AiProvider {
+  name = 'Yerel model (Ollama)'
+  constructor(
+    private baseUrl: string,
+    readonly model: string
+  ) {}
+
+  private url(path: string) {
+    const u = new URL(path, this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`)
+    // Yalnızca bu bilgisayardaki sunucuya bağlanılır
+    if (!/^(127\.0\.0\.1|localhost|\[::1\])$/.test(u.hostname)) throw new AiError('Ollama adresi yalnızca bu bilgisayar (127.0.0.1) olabilir.')
+    return u.toString()
+  }
+
+  async complete(req: AiRequest): Promise<string> {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 300000)
+    try {
+      const res = await fetch(this.url('api/chat'), {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          stream: false,
+          messages: [
+            { role: 'system', content: req.system },
+            { role: 'user', content: req.user }
+          ],
+          ...(req.jsonSchema ? { format: req.jsonSchema } : {})
+        })
+      })
+      const data = (await res.json().catch(() => ({}))) as { message?: { content?: string }; error?: string }
+      if (!res.ok) throw new AiError(`Yerel model hatası: ${data.error ?? res.status}${/not found/i.test(data.error ?? '') ? ` — "ollama pull ${this.model}" ile modeli indirin.` : ''}`)
+      return (data.message?.content ?? '').replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+    } catch (e) {
+      if (e instanceof AiError) throw e
+      if ((e as Error).name === 'AbortError') throw new AiError('Yerel model 5 dakika içinde yanıt vermedi.')
+      throw new AiError('Yerel modele bağlanılamadı. Ollama kurulu ve çalışıyor olmalı (https://ollama.com).')
+    } finally {
+      clearTimeout(t)
+    }
+  }
+
+  async ping(): Promise<string> {
+    const res = await fetch(this.url('api/tags')).catch(() => null)
+    if (!res?.ok) throw new AiError('Ollama çalışmıyor. Ollama’yı kurup başlatın (https://ollama.com).')
+    const data = (await res.json()) as { models?: { name: string }[] }
+    const names = (data.models ?? []).map((m) => m.name)
+    if (!names.some((n) => n === this.model || n.startsWith(`${this.model}:`) || this.model.startsWith(n))) throw new AiError(`Ollama çalışıyor ancak "${this.model}" modeli yüklü değil. Yüklü modeller: ${names.join(', ') || 'yok'}. Terminalde: ollama pull ${this.model}`)
+    return `Yerel model hazır (${this.model}).`
+  }
+}
+
 export function parseJson<T>(text: string): T {
   const s = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')
   try {

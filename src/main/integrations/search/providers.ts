@@ -13,9 +13,9 @@ import type { SearchHit } from '@shared/types'
 import { fold, isOfficialWebsite, normalizeWebsite } from '@shared/text'
 
 export interface SearchProvider {
-  key: 'google_places' | 'serpapi' | 'brave'
+  key: 'google_places' | 'serpapi' | 'brave' | 'google_browser'
   label: string
-  search(query: string, opts: { limit: number; signal?: AbortSignal }): Promise<SearchHit[]>
+  search(query: string, opts: { limit: number; signal?: AbortSignal; maxPages?: number }): Promise<SearchHit[]>
   test(): Promise<string>
 }
 

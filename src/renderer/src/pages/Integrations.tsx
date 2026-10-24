@@ -1,7 +1,7 @@
 // Entegrasyon Merkezi: her servis için durum, son kontrol, gerekli izinler, eksik ayarlar, test, bağlantıyı kes, hata ayrıntısı.
 
 import { useState } from 'react'
-import { Search, Gauge, Globe, Brain, MessageCircle, Mail, Database, Cloud, Unplug, Settings2 } from 'lucide-react'
+import { Search, Gauge, Globe, Brain, MessageCircle, Mail, Database, Cloud, Unplug, Settings2, MonitorPlay } from 'lucide-react'
 import { call, useApi } from '../lib/api'
 import { useNav } from '../lib/nav'
 import { Badge, Btn, Callout, Card, Field, Modal, useAction, useConfirm } from '../components/ui'
@@ -19,19 +19,23 @@ interface Def {
   perms: string
   secrets?: { name: string; label: string; hint?: string }[]
   configured: (s: Record<string, boolean>, x: any) => string[]
-  page?: 'email' | 'whatsapp'
+  page?: 'email' | 'whatsapp' | 'control'
+  optional?: boolean
   notTestable?: string
 }
 
 const DEFS: Def[] = [
-  { key: 'google_places', name: 'Google Places API (New)', icon: Search, desc: 'Sektör ve konuma göre işletme keşfi: ad, adres, web sitesi, telefon, işletme durumu.', perms: 'Google Cloud projesinde "Places API (New)" etkin, faturalandırma tanımlı API anahtarı.', secrets: [{ name: 'google_places_key', label: 'API anahtarı' }], configured: (s) => (s.google_places_key ? [] : ['API anahtarı']) },
-  { key: 'serpapi', name: 'SerpAPI', icon: Search, desc: 'Google Haritalar sonuçlarına yetkili aracı üzerinden erişim (alternatif sağlayıcı).', perms: 'serpapi.com hesabı ve API anahtarı.', secrets: [{ name: 'serpapi_key', label: 'API anahtarı' }], configured: (s) => (s.serpapi_key ? [] : ['API anahtarı']) },
-  { key: 'brave', name: 'Brave Search API', icon: Search, desc: 'Genel web araması ile resmî siteleri bulma (işletme bilgisi daha zayıf).', perms: 'api.search.brave.com aboneliği.', secrets: [{ name: 'brave_key', label: 'Abonelik anahtarı' }], configured: (s) => (s.brave_key ? [] : ['Abonelik anahtarı']) },
-  { key: 'pagespeed', name: 'Google PageSpeed Insights', icon: Gauge, desc: 'Lighthouse puanları ve Core Web Vitals (LCP, CLS, INP).', perms: 'Google Cloud projesinde "PageSpeed Insights API" etkin API anahtarı (ücretsiz kota).', secrets: [{ name: 'pagespeed_key', label: 'API anahtarı' }], configured: (s) => (s.pagespeed_key ? [] : ['API anahtarı']) },
+  { key: 'google_browser', name: 'Google araması (tarayıcı)', icon: MonitorPlay, desc: 'Bilgisayarınızdaki Chrome/Edge ile Google’a yazarak şirket bulur. API anahtarı gerekmez.', perms: 'Chrome veya Edge kurulu olmalı. CAPTCHA çıkarsa sizin çözmeniz beklenir.', configured: () => [], page: 'control' },
+  { key: 'gmail_web', name: 'Gmail (tarayıcı)', icon: Mail, desc: 'E-postalar otomasyon tarayıcısındaki Gmail oturumunuzla hazırlanır ve gönderilir.', perms: 'Otomasyon profilinde Gmail’e bir kez giriş yapın. Şifre uygulamaya girilmez.', configured: () => [], page: 'control' },
+  { key: 'whatsapp_web', name: 'WhatsApp Web (tarayıcı)', icon: MessageCircle, desc: 'Sohbetler WhatsApp Web’de açılır, alıcı ve metin doğrulanır, seçtiğiniz onay yöntemiyle gönderilir.', perms: 'Otomasyon profilinde QR ile bir kez giriş. Resmî olmayan otomasyon hesap kısıtlaması riski taşır.', configured: () => [], page: 'control' },
+  { key: 'google_places', optional: true, name: 'Google Places API (New)', icon: Search, desc: 'Sektör ve konuma göre işletme keşfi: ad, adres, web sitesi, telefon, işletme durumu.', perms: 'Google Cloud projesinde "Places API (New)" etkin, faturalandırma tanımlı API anahtarı.', secrets: [{ name: 'google_places_key', label: 'API anahtarı' }], configured: (s) => (s.google_places_key ? [] : ['API anahtarı']) },
+  { key: 'serpapi', optional: true, name: 'SerpAPI', icon: Search, desc: 'Google Haritalar sonuçlarına yetkili aracı üzerinden erişim (alternatif sağlayıcı).', perms: 'serpapi.com hesabı ve API anahtarı.', secrets: [{ name: 'serpapi_key', label: 'API anahtarı' }], configured: (s) => (s.serpapi_key ? [] : ['API anahtarı']) },
+  { key: 'brave', optional: true, name: 'Brave Search API', icon: Search, desc: 'Genel web araması ile resmî siteleri bulma (işletme bilgisi daha zayıf).', perms: 'api.search.brave.com aboneliği.', secrets: [{ name: 'brave_key', label: 'Abonelik anahtarı' }], configured: (s) => (s.brave_key ? [] : ['Abonelik anahtarı']) },
+  { key: 'pagespeed', optional: true, name: 'Google PageSpeed Insights', icon: Gauge, desc: 'Lighthouse puanları ve Core Web Vitals (LCP, CLS, INP).', perms: 'Google Cloud projesinde "PageSpeed Insights API" etkin API anahtarı (ücretsiz kota).', secrets: [{ name: 'pagespeed_key', label: 'API anahtarı' }], configured: (s) => (s.pagespeed_key ? [] : ['API anahtarı']) },
   { key: 'browser', name: 'Tarayıcı motoru (Lighthouse benzeri yerel ölçüm)', icon: Globe, desc: 'Masaüstü/mobil görünüm, ekran görüntüleri ve sayfa içi ölçümler için yüklü Microsoft Edge veya Google Chrome.', perms: 'Edge veya Chrome kurulu olmalı. Ek indirme yapılmaz.', configured: () => [] },
-  { key: 'ai', name: 'Yapay zekâ sağlayıcısı', icon: Brain, desc: 'Kişiselleştirilmiş mesaj taslakları, yeniden yazma ve analiz özetleri.', perms: 'Anthropic veya OpenAI API anahtarı.', configured: (s, x) => (x.ai.provider === 'none' ? ['Sağlayıcı seçilmedi'] : x.ai.provider === 'openai' ? (s.openai_key ? [] : ['OpenAI anahtarı']) : s.anthropic_key ? [] : ['Anthropic anahtarı']) },
-  { key: 'whatsapp', name: 'WhatsApp Business Platform', icon: MessageCircle, desc: 'Onaylı şablonlarla resmî gönderim veya manuel tıkla-gönder.', perms: 'Meta Business hesabı, doğrulanmış numara, Phone number ID, kalıcı erişim anahtarı, onaylı şablon.', configured: () => [], page: 'whatsapp' },
-  { key: 'email', name: 'E-posta (SMTP/IMAP)', icon: Mail, desc: 'Gmail, Google Workspace, Outlook, Microsoft 365 veya kurumsal SMTP/IMAP.', perms: 'Uygulama şifresi veya SMTP AUTH izni.', configured: () => [], page: 'email' },
+  { key: 'ai', optional: true, name: 'Yapay zekâ (isteğe bağlı)', icon: Brain, desc: 'Daha doğal mesaj metinleri ve analiz özetleri. Kapalıyken analiz bulgularına dayalı hazır şablonlar kullanılır.', perms: 'Yerel model (Ollama, ücretsiz, bilgisayarınızda çalışır) veya Anthropic/OpenAI API anahtarı.', configured: (s, x) => (x.ai.provider === 'none' ? [] : x.ai.provider === 'ollama' ? [] : x.ai.provider === 'openai' ? (s.openai_key ? [] : ['OpenAI anahtarı']) : s.anthropic_key ? [] : ['Anthropic anahtarı']) },
+  { key: 'whatsapp', optional: true, name: 'WhatsApp Business Platform (API)', icon: MessageCircle, desc: 'Onaylı şablonlarla resmî gönderim veya manuel tıkla-gönder.', perms: 'Meta Business hesabı, doğrulanmış numara, Phone number ID, kalıcı erişim anahtarı, onaylı şablon.', configured: () => [], page: 'whatsapp' },
+  { key: 'email', optional: true, name: 'E-posta (SMTP/IMAP)', icon: Mail, desc: 'Gmail, Google Workspace, Outlook, Microsoft 365 veya kurumsal SMTP/IMAP.', perms: 'Uygulama şifresi veya SMTP AUTH izni.', configured: () => [], page: 'email' },
   { key: 'gmail_oauth', name: 'Gmail / Google Workspace (OAuth)', icon: Mail, desc: 'OAuth ile parolasız bağlantı.', perms: 'Google Cloud OAuth istemcisi ve doğrulama süreci.', configured: () => ['Bu sürümde geliştirilmedi'], notTestable: 'Henüz geliştirilmedi — uygulama şifresiyle SMTP/IMAP kullanın.' },
   { key: 'm365_oauth', name: 'Microsoft 365 (OAuth)', icon: Mail, desc: 'Microsoft Graph ile OAuth bağlantısı.', perms: 'Azure AD uygulama kaydı.', configured: () => ['Bu sürümde geliştirilmedi'], notTestable: 'Henüz geliştirilmedi — SMTP AUTH ile bağlanabilirsiniz.' },
   { key: 'crm', name: 'Harici CRM entegrasyonu', icon: Database, desc: 'HubSpot, Pipedrive vb. ile senkronizasyon (isteğe bağlı).', perms: '—', configured: () => ['Bu sürümde geliştirilmedi'], notTestable: 'Henüz geliştirilmedi. Excel/CSV dışa aktarma ile veri taşınabilir.' },
@@ -52,7 +56,7 @@ export default function Integrations({ settings, setSettings }: PageProps) {
       <div className="page-head">
         <div>
           <h1>Entegrasyonlar</h1>
-          <p>Anahtarlar işletim sisteminin güvenli kasasında (Windows DPAPI / macOS Anahtar Zinciri) şifreli saklanır; kaynak koda veya günlüklere yazılmaz. Bir entegrasyon çalışmazsa diğer modüller çalışmaya devam eder.</p>
+          <p>Temel kullanım için API gerekmez: Google, Gmail ve WhatsApp bilgisayarınızdaki tarayıcı üzerinden kullanılır (üstteki üç kart). Aşağıdaki API seçenekleri isteğe bağlıdır. Anahtarlar işletim sisteminin güvenli kasasında (Windows DPAPI / macOS Anahtar Zinciri) şifreli saklanır; kaynak koda veya günlüklere yazılmaz. Bir entegrasyon çalışmazsa diğer modüller çalışmaya devam eder.</p>
         </div>
       </div>
       <div className="grid g3">
@@ -66,6 +70,7 @@ export default function Integrations({ settings, setSettings }: PageProps) {
               <div className="row">
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--brand-soft)', display: 'grid', placeItems: 'center' }}><Ic size={18} color="var(--brand)" /></div>
                 <b style={{ flex: 1 }}>{d.name}</b>
+                {d.optional && <Badge>İsteğe bağlı</Badge>}
                 <Badge tone={ST[st]?.[1]} dot>{d.notTestable ? 'Geliştirilmedi' : ST[st]?.[0]}</Badge>
               </div>
               <div className="small muted">{d.desc}</div>
@@ -111,7 +116,8 @@ function AiConfig({ settings, setSettings, secrets, onSaved }: { settings: AppSe
   return (
     <div className="col" style={{ gap: 12 }}>
       <div className="grid g2">
-        <Field label="Sağlayıcı"><select className="select" value={settings.ai.provider} onChange={(e) => upd({ provider: e.target.value as AppSettings['ai']['provider'] })}><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI</option><option value="none">Kullanma</option></select></Field>
+        <Field label="Sağlayıcı"><select className="select" value={settings.ai.provider} onChange={(e) => upd({ provider: e.target.value as AppSettings['ai']['provider'] })}><option value="none">Kullanma (hazır şablonlar)</option><option value="ollama">Yerel model — Ollama (ücretsiz, API yok)</option><option value="anthropic">Anthropic Claude (API)</option><option value="openai">OpenAI (API)</option></select></Field>
+        {settings.ai.provider === 'ollama' && <Field label="Yerel model adı" hint="Önce https://ollama.com adresinden Ollama'yı kurup terminalde örn. 'ollama pull qwen3:8b' çalıştırın."><input className="input" value={settings.ai.ollamaModel} onChange={(e) => upd({ ollamaModel: e.target.value })} /></Field>}
         {settings.ai.provider === 'anthropic' && (
           <Field label="Model" hint="Opus en yüksek kalite; Sonnet ve Haiku daha düşük maliyetlidir.">
             <select className="select" value={settings.ai.model} onChange={(e) => upd({ model: e.target.value })}>
