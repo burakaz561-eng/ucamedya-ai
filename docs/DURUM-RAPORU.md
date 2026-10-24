@@ -2,6 +2,10 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.2.3 — WhatsApp masaüstünde sohbet şirketin numarasıyla açılır
+
+Kullanıcı isteğiyle: WhatsApp masaüstü kanalında sohbet, test modu açık olsa da şirketin gerçek numarasıyla açılır ve mesaj kutuya yazılır. Uygulama hiçbir şey göndermez; mesaj ancak kullanıcı WhatsApp'ta Enter'a basarsa gider. "WhatsApp'ta gönderdim" denirse kayıt gerçek gönderim olarak işlenir (şirket "yanıt bekleniyor" aşamasına geçer, tekrar gönderim engellenir). Webmail ve WhatsApp Web için test modu yönlendirmesi aynen sürüyor. ✅ kod + birim testleri; 🟡 kullanıcının ekranında henüz denenmedi.
+
 ## 0.2.2 — Kurumsal mesaj şablonları ve otomatik alıcı seçimi
 
 | Özellik | Durum |

@@ -388,7 +388,7 @@ export class OutreachService {
       }
     }
     const s = this.settings.get()
-    const testMode = !!m.test_mode || s.outreach.testMode
+    let testMode = !!m.test_mode || s.outreach.testMode
     const isWeb = ['gmail_web', 'webmail', 'whatsapp_web', 'whatsapp_desktop'].includes(this.transport(m.channel))
     // Tarayıcı kanallarında hazırlık aşaması "preparing"dir; yalnızca gönder düğmesine basılırken "sending" olur
     this.db.run("UPDATE outreach_messages SET status = ?, attempts = attempts + 1 WHERE id = ?", isWeb ? 'preparing' : 'sending', id)
@@ -396,7 +396,11 @@ export class OutreachService {
       let providerId = ''
       const tr = this.transport(m.channel)
       if (tr === 'whatsapp_desktop') {
-        const outcome = await this.processDesktop(m, testMode)
+        // Masaüstü uygulamasında gönderimi kullanıcı kendisi (Enter ile) yapar; uygulama hiçbir şey göndermez.
+        // Bu yüzden sohbet test modunda da şirketin gerçek numarasıyla açılır ve kayıt gerçek gönderim sayılır.
+        testMode = false
+        this.db.run('UPDATE outreach_messages SET test_mode = 0 WHERE id = ?', id)
+        const outcome = await this.processDesktop(m)
         if (outcome !== 'sent') return
         providerId = 'desktop:user-confirmed'
       } else if (tr === 'gmail_web' || tr === 'webmail' || tr === 'whatsapp_web') {
@@ -453,10 +457,10 @@ export class OutreachService {
    * Uygulamanın içi okunamadığı için gönderimi kullanıcı kendisi yapar (Enter) ve sonucu burada bildirir;
    * bu kanalda otomatik gönderim ve otomatik doğrulama yoktur.
    */
-  private async processDesktop(m: { id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string }, testMode: boolean): Promise<'sent' | 'handled'> {
+  private async processDesktop(m: { id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string }): Promise<'sent' | 'handled'> {
     const s = this.settings.get()
     const company = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
-    const to = testMode ? phoneKey(s.outreach.testRecipientPhone) : m.recipient_key
+    const to = m.recipient_key
     await shell.openExternal(whatsappDesktopUrl(to, m.body))
     this.companies.log(m.company_id, 'WhatsApp uygulamasında sohbet açıldı', `+${to}`, 'system', 'message', m.id)
     if (s.outreach.sendMode === 'draft') {
@@ -468,7 +472,7 @@ export class OutreachService {
     const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
       this.pendingConfirm.set(m.id, resolve)
       const rec = this.recipient(m.company_id, 'whatsapp')
-      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'WhatsApp uygulamasında açılan sohbetin bu numaraya ait olduğunu kontrol edin, mesajı Enter ile gönderin.', subject: null, body: m.body, attachment: null, preview: null, testMode, manualSend: true })
+      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, preview: null, testMode: false, manualSend: true })
     })
     this.emitConfirm({ messageId: m.id, closed: true })
     if (decision === 'send') return 'sent'
