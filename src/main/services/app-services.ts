@@ -25,6 +25,7 @@ import { AnalysisService } from './analysis-service'
 import { JobEngine } from '../jobs/engine'
 import { ResearchPipeline } from '../research/pipeline'
 import { OutreachService } from '../outreach/outreach-service'
+import { WebsiteLeads } from '../integrations/website-leads'
 import { OfferService } from './offers'
 import { StatsService } from './stats'
 import { BackupService } from './backup'
@@ -50,6 +51,7 @@ export class AppServices {
   readonly jobs: JobEngine
   readonly research: ResearchPipeline
   readonly outreach: OutreachService
+  readonly leads: WebsiteLeads
   readonly offers: OfferService
   readonly stats: StatsService
   readonly backups: BackupService
@@ -83,6 +85,7 @@ export class AppServices {
     this.analysis = new AnalysisService(this.db, this.files, this.companies, this.settings, new SiteAnalyzer(this.http), () => this.pagespeed(), () => this.ai(), change)
     this.jobs = new JobEngine(this.db, () => this.settings.get().analysis.concurrency + 1, (ev: JobEvent) => this.emit('job', ev))
     this.outreach = new OutreachService(this.db, this.companies, this.settings, this.secrets, this.files, () => this.ai(), change)
+    this.leads = new WebsiteLeads(this.db, this.companies, this.settings, this.secrets)
     this.offers = new OfferService(this.db, this.files, this.companies, this.settings, change)
     this.stats = new StatsService(this.db)
     this.backups = new BackupService(this.db, () => this.settings.get().backup.dir || join(paths.userData, 'Yedekler'))

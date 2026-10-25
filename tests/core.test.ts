@@ -487,3 +487,49 @@ describe('0.3 CRM: eşleşme onayı, aşama geçmişi, migration yedeği', () =>
     ;(old.raw as any).close?.()
   })
 })
+
+describe('0.3 web sitesi talepleri (eşleştirme ve içe aktarma)', () => {
+  let dir: string
+  let db: Db
+  let cs: CompanyService
+  let leads: any
+  beforeEach(async () => {
+    const { WebsiteLeads } = await import('../src/main/integrations/website-leads')
+    dir = mkdtempSync(join(tmpdir(), 'uca-leads-'))
+    db = new Db(join(dir, 'l.sqlite'))
+    db.migrate()
+    cs = new CompanyService(db, new FileStore(db, () => join(dir, 'data')))
+    leads = new WebsiteLeads(db, cs, new SettingsService(db), { has: () => true, get: () => 'k', set: () => undefined } as any)
+  })
+  afterEach(() => {
+    ;(db.raw as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
+  })
+  const item = (o: Record<string, unknown> = {}) => ({ id: 1, kind: 'quote', service: 'web_design', service_label: 'Web tasarımı', answers: { 'Kaç sayfa düşünüyorsunuz?': '6–10' }, person_name: 'Ayşe Yılmaz', company_name: 'EmlaXo Türkiye', email: 'ayse@emlaxo.com', phone: '0532 111 22 33', website: 'https://www.emlaxo.com', message: 'Site istiyoruz', contact_pref: 'whatsapp', page_url: 'https://ucamedya.com.tr/teklif/', consent: { kvkk: true, marketing: false, at: '2026-10-25T10:00:00Z' }, ...o })
+
+  it('mevcut şirketle alan adından eşleşir, mükerrer kart açılmaz; aynı talep ikinci kez alınmaz', () => {
+    const a = cs.create({ name: 'EmlaXo Türkiye - Kocaeli Emlak Ofisi', website: 'https://emlaxo.com', source: 'google_browser' } as any)
+    const r = leads.importItem('https://ucamedya.com.tr/', item())
+    expect(r).toMatchObject({ companyId: a, created: false, duplicate: false })
+    expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM companies')!.n).toBe(1)
+    expect(leads.importItem('https://ucamedya.com.tr/', item()).duplicate).toBe(true)
+    expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM tasks WHERE company_id = ? AND kind = 'inbound'", a)!.n).toBe(1)
+    const perm = db.all<{ channel: string; status: string }>('SELECT channel, status FROM outreach_permissions WHERE company_id = ? ORDER BY channel', a)
+    expect(perm).toEqual([{ channel: 'email', status: 'opt_in' }, { channel: 'whatsapp', status: 'opt_in' }])
+    expect(db.get<{ type: string; source_type: string }>("SELECT type, source_type FROM company_contacts WHERE company_id = ? AND value_key = '905321112233'", a)).toMatchObject({ type: 'whatsapp', source_type: 'form' })
+  })
+  it('eşleşme yoksa yeni kart "İnceleme bekliyor" aşamasında açılır; yalnızca ad benzerliği onaya düşer', () => {
+    const b = cs.create({ name: 'Mavi Yapı', source: 'manual' } as any)
+    const r = leads.importItem('https://ucamedya.com.tr/', item({ id: 2, company_name: 'Mavi Yapı - Gebze Şubesi', email: 'info@maviyapi.com', phone: '', website: '' }))
+    expect(r.created).toBe(true)
+    expect(r.companyId).not.toBe(b)
+    expect(db.get<{ stage_key: string; source: string }>('SELECT stage_key, source FROM companies WHERE id = ?', r.companyId)).toMatchObject({ stage_key: 'review', source: 'website' })
+    expect(cs.pendingMatchCount()).toBe(1)
+  })
+  it('ret listesindeki şirketin izni opt_in\'e çevrilmez', () => {
+    const a = cs.create({ name: 'EmlaXo', website: 'https://emlaxo.com', source: 'manual' } as any)
+    db.run("INSERT INTO outreach_permissions(company_id, channel, status) VALUES (?, 'email', 'opted_out')", a)
+    leads.importItem('https://ucamedya.com.tr/', item({ id: 3 }))
+    expect(db.get<{ status: string }>("SELECT status FROM outreach_permissions WHERE company_id = ? AND channel = 'email'", a)!.status).toBe('opted_out')
+  })
+})

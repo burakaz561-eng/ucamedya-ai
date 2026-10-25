@@ -65,10 +65,10 @@ export const DEFAULT_STAGES: { key: string; label: string; color: string; termin
 ]
 
 export const PRIORITY_GROUPS = [
-  { key: 'priority', label: 'Öncelikli inceleme' },
+  { key: 'priority', label: 'Öncelikli fırsat' },
   { key: 'high_fit', label: 'Yüksek hizmet uyumu' },
-  { key: 'mid_fit', label: 'Orta düzey hizmet uyumu' },
-  { key: 'needs_research', label: 'Ek araştırma gerekiyor' },
+  { key: 'mid_fit', label: 'Düşük öncelik' },
+  { key: 'needs_research', label: 'Ek inceleme gerekli' },
   { key: 'not_suitable', label: 'İletişim için uygun değil' },
   { key: 'contacted_before', label: 'Daha önce iletişim kurulmuş' },
   { key: 'opted_out', label: 'İletişim istemiyor' }

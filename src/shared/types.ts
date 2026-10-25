@@ -22,6 +22,8 @@ export interface AppSettings {
   ai: { provider: 'anthropic' | 'openai' | 'ollama' | 'none'; model: string; openaiModel: string; ollamaUrl: string; ollamaModel: string; enabled: boolean }
   search: { provider: 'google_browser' | 'google_places' | 'serpapi' | 'brave' | 'manual'; maxQueriesPerResearch: number; pagesPerQuery: number }
   automation: { browser: 'chrome' | 'edge'; autoStart: boolean; previewIntervalSec: number }
+  /** UcaMedya Bağlantı WordPress eklentisi (web sitesi talepleri) */
+  website: { siteUrl: string; enabled: boolean; syncMinutes: number }
   analysis: { concurrency: number; pagespeed: boolean; maxPages: number; screenshotMaxWidth: number; respectRobots: boolean; timeoutSec: number }
   scoring: {
     weights: { improvementNeed: number; serviceFit: number; activeSignals: number; contactValidity: number; opportunitySignals: number }

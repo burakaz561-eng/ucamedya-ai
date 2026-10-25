@@ -229,6 +229,35 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'companies:delete': (p) => s.companies.hardDelete(id.parse(p?.id)),
     'companies:merge': (p) => s.companies.merge(id.parse(p?.keep), id.parse(p?.drop)),
     'companies:duplicates': () => s.companies.duplicates(),
+    // ---------------- Web sitesi talepleri ----------------
+    'leads:config': () => s.leads.config(),
+    'leads:saveConfig': (p) => s.leads.saveConfig(z.object({ siteUrl: optStr(300), enabled: z.boolean().optional(), syncMinutes: z.number().optional(), key: optStr(100) }).parse(p ?? {}) as Parameters<AppServices['leads']['saveConfig']>[0]),
+    'leads:test': () => s.leads.test(),
+    'leads:sync': async () => {
+      const r = await s.leads.sync()
+      if (r.imported) s.emit('data-changed', { scope: 'companies' })
+      return r
+    },
+    'leads:list': (p) => s.leads.list(z.object({ status: optStr(20) }).parse(p ?? {}) as { status?: string }),
+    'leads:setStatus': (p) => s.leads.setStatus(id.parse(p?.id), z.enum(['new', 'reviewed', 'converted', 'spam']).parse(p?.status)),
+    'leads:exportPlugin': async () => {
+      const src = join(app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources'), 'wordpress', 'ucamedya-baglanti.zip')
+      if (!existsSync(src)) throw new Error('Eklenti paketi bulunamadı (npm run build:wp ile oluşturulur).')
+      const r = await dialog.showSaveDialog(win()!, { defaultPath: join(app.getPath('downloads'), 'ucamedya-baglanti.zip'), filters: [{ name: 'ZIP', extensions: ['zip'] }] })
+      if (r.canceled || !r.filePath) return null
+      copyFileSync(src, r.filePath)
+      return r.filePath
+    },
+    'pipeline:board': () => ({
+      stages: s.db.all("SELECT key, label, color, terminal FROM stages WHERE key <> 'archived' ORDER BY position"),
+      cards: s.db.all(`SELECT c.id, c.name, c.city, c.sector, c.stage_key, c.opportunity_score, c.priority_group,
+          (SELECT MAX(h.at) FROM stage_history h WHERE h.company_id = c.id AND h.to_key = c.stage_key) AS stage_at,
+          t.title AS task_title, t.due_at AS task_due
+        FROM companies c
+        LEFT JOIN tasks t ON t.id = (SELECT id FROM tasks x WHERE x.company_id = c.id AND x.status IN ('open','in_progress') ORDER BY x.due_at IS NULL, x.due_at, x.id LIMIT 1)
+        WHERE c.merged_into IS NULL AND c.archived_at IS NULL
+        ORDER BY c.opportunity_score IS NULL, c.opportunity_score DESC, c.id DESC LIMIT 3000`)
+    }),
     'companies:keepSeparate': (p) => s.companies.keepSeparate(id.parse(p?.a), id.parse(p?.b)),
     'companies:pendingMatches': () => s.companies.pendingMatchCount(),
     'companies:stageHistory': (p) => s.db.all("SELECT h.*, f.label AS from_label, t.label AS to_label FROM stage_history h LEFT JOIN stages f ON f.key = h.from_key LEFT JOIN stages t ON t.key = h.to_key WHERE h.company_id = ? ORDER BY h.at DESC LIMIT 100", id.parse(p?.id)),

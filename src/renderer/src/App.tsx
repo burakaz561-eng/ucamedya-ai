@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Radar, Factory, ScanSearch, Users, MessagesSquare, Mail, MessageCircle, Sparkles, FileSignature, CalendarClock,
-  BarChart3, FolderOpen, Plug, Workflow, Settings as SettingsIcon, MonitorPlay, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
+  BarChart3, FolderOpen, Plug, Workflow, KanbanSquare, Inbox, Settings as SettingsIcon, MonitorPlay, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
 } from 'lucide-react'
 import { call, useApi, useJobEvents } from './lib/api'
 import { NavCtx, useNav, type PageKey, type Route } from './lib/nav'
@@ -30,6 +30,8 @@ const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage'))
 const Studio = lazy(() => import('./pages/Studio'))
 const Offers = lazy(() => import('./pages/Offers'))
 const FollowUp = lazy(() => import('./pages/FollowUp'))
+const Pipeline = lazy(() => import('./pages/Pipeline'))
+const Leads = lazy(() => import('./pages/Leads'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Files = lazy(() => import('./pages/Files'))
 const Integrations = lazy(() => import('./pages/Integrations'))
@@ -43,6 +45,8 @@ export const NAV: { key: PageKey; label: string; icon: typeof Radar; group?: str
   { key: 'research', label: 'Sektör Araştırması', icon: Factory },
   { key: 'analysis', label: 'Web Sitesi Analizi', icon: ScanSearch },
   { key: 'companies', label: 'Müşteri Havuzu', icon: Users, group: 'Müşteriler' },
+  { key: 'pipeline', label: 'Satış Panosu', icon: KanbanSquare },
+  { key: 'leads', label: 'Web Sitesi Talepleri', icon: Inbox },
   { key: 'communication', label: 'İletişim Merkezi', icon: MessagesSquare, group: 'İletişim' },
   { key: 'email', label: 'E-posta Kampanyaları', icon: Mail },
   { key: 'whatsapp', label: 'WhatsApp İşlemleri', icon: MessageCircle },
@@ -153,7 +157,7 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
     return () => window.removeEventListener('keydown', h)
   }, [go])
 
-  const Page = { dashboard: Dashboard, control: ControlCenter, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
+  const Page = { dashboard: Dashboard, control: ControlCenter, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, pipeline: Pipeline, leads: Leads, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
   const counts: Partial<Record<PageKey, number>> = { studio: dash?.draftsPending ?? 0, companies: dash?.reviewPending ?? 0 }
   const dark = settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   let lastGroup = ''

@@ -36,7 +36,7 @@ export function checkEligibility(i: EligibilityInput): Eligibility {
   if (i.suppressedCompany || i.suppressedRecipient) reasons.push('Şirket veya alıcı ret listesinde ("iletişim istemiyor").')
   if (i.permissionStatus === 'opted_out') reasons.push('Bu kanal için iletişim reddi kaydı var.')
   if (i.requireApproval && i.draftStatus !== 'approved' && i.draftStatus !== 'queued') reasons.push('Taslak henüz onaylanmadı.')
-  if (i.contactKind === 'personal' && !i.allowPersonalContacts) reasons.push('Alıcı kişisel bir iletişim bilgisi (ör. bireysel e-posta). Kişisel verilere ticari ileti göndermek ek hukuki koşullar gerektirir; ayarlardan bilinçli olarak izin verilmedikçe gönderilmez.')
+  if (i.contactKind === 'personal' && !i.allowPersonalContacts && i.permissionStatus !== 'opt_in') reasons.push('Alıcı kişisel bir iletişim bilgisi (ör. bireysel e-posta). Kişisel verilere ticari ileti göndermek ek hukuki koşullar gerektirir; ayarlardan bilinçli olarak izin verilmedikçe gönderilmez.')
   if (i.alreadySentToRecipient) reasons.push('Bu alıcıya bu kanaldan daha önce mesaj gönderilmiş (tekrar gönderim engeli).')
   if (!i.accountReady) reasons.push(i.channel === 'email' ? 'Gönderim için doğrulanmış bir e-posta hesabı yok.' : 'WhatsApp hesabı yapılandırılmamış.')
   if (i.dailyLimit > 0 && i.dailySent >= i.dailyLimit) reasons.push(`Günlük gönderim sınırına ulaşıldı (${i.dailyLimit}).`)

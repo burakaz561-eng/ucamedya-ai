@@ -1,0 +1,31 @@
+/* UcaMedya Bağlantı — sade, temanın yazı tipini ve renklerini devralan form stilleri */
+.uca-form { --uca-brand: #e95a1b; --uca-line: rgba(127,127,127,.35); display: grid; gap: 14px; max-width: 720px; margin: 0 auto 24px; }
+.uca-form fieldset { border: 1px solid var(--uca-line); border-radius: 12px; padding: 14px 16px; margin: 0; display: grid; gap: 12px; }
+.uca-form fieldset[hidden] { display: none; }
+.uca-form legend { padding: 0 6px; font-weight: 600; }
+.uca-f { display: grid; gap: 6px; }
+.uca-f > span { font-size: .92em; font-weight: 600; }
+.uca-form input:not([type=checkbox]), .uca-form select, .uca-form textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--uca-line); border-radius: 10px; font: inherit; background: transparent; color: inherit; }
+.uca-form input:focus, .uca-form select:focus, .uca-form textarea:focus { outline: 2px solid var(--uca-brand); outline-offset: 1px; }
+.uca-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.uca-checks { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.uca-checks label, .uca-check { display: flex; gap: 8px; align-items: flex-start; font-size: .94em; }
+.uca-btn { justify-self: start; background: var(--uca-brand); color: #fff; border: 0; border-radius: 999px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+.uca-btn[disabled] { opacity: .6; cursor: wait; }
+.uca-hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; overflow: hidden; }
+.uca-note { font-size: .85em; opacity: .75; margin: 0; }
+.uca-box { max-width: 720px; margin: 0 auto 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(127,127,127,.35); }
+.uca-ok { border-color: #2e9e5b; background: rgba(46,158,91,.08); }
+.uca-err { border-color: #c2261e; background: rgba(194,38,30,.07); }
+.uca-audit-result { max-width: 720px; margin: 0 auto 20px; }
+.uca-report { border: 1px solid rgba(127,127,127,.35); border-radius: 14px; padding: 16px; }
+.uca-report-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; word-break: break-word; }
+.uca-score { font-size: 2em; font-weight: 700; color: #e95a1b; line-height: 1; white-space: nowrap; }
+.uca-score small { font-size: .45em; opacity: .7; }
+.uca-checks-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.uca-checks-list li { display: flex; gap: 10px; align-items: flex-start; }
+.uca-ic { flex: 0 0 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; background: #8a8a8a; }
+.uca-st-ok .uca-ic { background: #2e9e5b; }
+.uca-st-warn .uca-ic { background: #d98a00; }
+.uca-st-bad .uca-ic { background: #c2261e; }
+.uca-audit-contact h4 { margin: 0; }

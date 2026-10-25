@@ -117,7 +117,27 @@ export default function Dashboard({ settings }: PageProps) {
             </div>
           )) : <div className="muted small">Henüz otomasyon çalışmadı.</div>}
         </Card>
-        <Card title="Yaklaşan görevler" actions={<Btn size="sm" variant="ghost" onClick={() => go('followup')}>Tümü</Btn>}>
+        <Card title={`Bugün yapılacaklar (${d.todayTasks.length}) · Geciken (${d.overdueTasks.length})`} actions={<Btn size="sm" variant="ghost" onClick={() => go('followup')}>Tümü</Btn>}>
+          {d.overdueTasks.map((t: any) => (
+            <div key={`o${t.id}`} className="list-item small" style={{ cursor: t.company_id ? 'pointer' : undefined }} onClick={() => t.company_id && openCompany(t.company_id)}>
+              <Badge tone="danger">Gecikti · {fmtDate(t.due_at)}</Badge>
+              <div style={{ flex: 1, minWidth: 0 }}><div className="ellipsis">{t.title}</div>{t.company_name && <div className="tiny muted">{t.company_name}</div>}</div>
+            </div>
+          ))}
+          {d.todayTasks.map((t: any) => (
+            <div key={`t${t.id}`} className="list-item small" style={{ cursor: t.company_id ? 'pointer' : undefined }} onClick={() => t.company_id && openCompany(t.company_id)}>
+              <Badge tone="brand">Bugün</Badge>
+              <div style={{ flex: 1, minWidth: 0 }}><div className="ellipsis">{t.title}</div>{t.company_name && <div className="tiny muted">{t.company_name}</div>}</div>
+            </div>
+          ))}
+          {!d.overdueTasks.length && !d.todayTasks.length && <div className="muted small" style={{ padding: '6px 0' }}>Bugün için ya da geciken görev yok.</div>}
+          {(d.pendingMatches > 0 || d.newLeads > 0) && (
+            <div className="row wrap" style={{ gap: 8, marginTop: 8 }}>
+              {d.newLeads > 0 && <Btn size="sm" variant="primary" onClick={() => go('leads')}>{d.newLeads} yeni web sitesi talebi</Btn>}
+              {d.pendingMatches > 0 && <Btn size="sm" onClick={() => go('companies')}>{d.pendingMatches} olası eşleşme onay bekliyor</Btn>}
+            </div>
+          )}
+          <div className="tiny faint" style={{ marginTop: 10 }}>Yaklaşan</div>
           {d.upcomingTasks.length ? d.upcomingTasks.map((t: any) => (
             <div key={t.id} className="list-item small">
               <Badge tone={t.priority === 'urgent' || t.priority === 'high' ? 'danger' : 'neutral'}>{t.due_at ? fmtDate(t.due_at) : 'Tarihsiz'}</Badge>

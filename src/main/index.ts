@@ -102,6 +102,30 @@ function startSchedulers() {
     if (!last || Date.now() - new Date(last).getTime() > b.intervalHours * 3600_000) services.jobs.enqueue('backup', 'Otomatik yedek', { kind: 'auto' })
   }
   timers.push(setTimeout(backupTick, 90_000), setInterval(backupTick, 3600_000))
+  // Web sitesi talepleri (UcaMedya Bağlantı eklentisi): ayarlanan aralıkla
+  let leadsBusy = false
+  let leadsLast = 0
+  timers.push(
+    setInterval(async () => {
+      const w = services.settings.get().website
+      if (!w.enabled || !w.siteUrl || leadsBusy || Date.now() - leadsLast < w.syncMinutes * 60_000) return
+      leadsBusy = true
+      leadsLast = Date.now()
+      try {
+        const r = await services.leads.sync()
+        if (r.imported) {
+          const body = r.imported === 1 ? r.items[0].title : `${r.imported} yeni talep (${r.created} yeni müşteri, ${r.matched} mevcut müşteriyle eşleşti)`
+          if (Notification.isSupported()) new Notification({ title: 'Web sitesinden yeni talep', body }).show()
+          send('notification', { kind: 'lead', title: 'Web sitesinden yeni talep', company: body })
+          send('data-changed', { scope: 'companies' })
+        }
+      } catch (e) {
+        log('warn', `Web sitesi talepleri alınamadı: ${(e as Error).message}`)
+      } finally {
+        leadsBusy = false
+      }
+    }, 30_000)
+  )
   // E-posta yanıtları (30 dakikada bir, yalnızca doğrulanmış IMAP hesabı varsa)
   timers.push(
     setInterval(() => {

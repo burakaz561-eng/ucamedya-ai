@@ -22,6 +22,8 @@ extraResources:
     to: fonts
   - from: resources/brand
     to: brand
+  - from: resources/wordpress
+    to: wordpress
 win:
   icon: build/icon.ico
   target:

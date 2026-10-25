@@ -292,3 +292,14 @@ table.dt td.wrap { white-space: normal; }
 .robot-bubble { background: var(--bg-elev); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow-2); font-size: 13px; position: relative; }
 .lock-screen { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(900px 600px at 50% 30%, #2a1a12, #0b0b0d 70%); z-index: 95; color: #eee; }
 .drop-zone { border: 2px dashed var(--line-strong); border-radius: 14px; padding: 22px; text-align: center; color: var(--mute); }
+
+/* Satış panosu */
+.kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; min-height: 60vh; }
+.kanban-col { flex: 0 0 248px; background: var(--bg-elev); border: 1px solid var(--line); border-radius: 14px; display: flex; flex-direction: column; max-height: calc(100vh - 230px); transition: border-color .15s, background .15s; }
+.kanban-col.over { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, var(--bg-elev)); }
+.kanban-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.kanban-list { padding: 8px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 80px; }
+.kanban-card { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; cursor: grab; display: flex; flex-direction: column; gap: 3px; }
+.kanban-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-1, 0 1px 3px rgba(0,0,0,.08)); }
+.kanban-card:active { cursor: grabbing; }
+.danger-text { color: var(--danger, #c0392b); }

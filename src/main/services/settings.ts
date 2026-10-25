@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai: { provider: 'none', model: 'claude-opus-5-5', openaiModel: 'gpt-5.1', ollamaUrl: 'http://127.0.0.1:11434', ollamaModel: 'qwen3:8b', enabled: true },
   search: { provider: 'google_browser', maxQueriesPerResearch: 6, pagesPerQuery: 3 },
   automation: { browser: 'chrome', autoStart: true, previewIntervalSec: 2 },
+  website: { siteUrl: '', enabled: false, syncMinutes: 5 },
   analysis: { concurrency: 2, pagespeed: true, maxPages: 4, screenshotMaxWidth: 1440, respectRobots: true, timeoutSec: 30 },
   scoring: { weights: { ...DEFAULT_SCORING_WEIGHTS }, categoryWeights: { ...DEFAULT_CATEGORY_WEIGHTS }, priorityThreshold: 70, highFitThreshold: 55 },
   outreach: {

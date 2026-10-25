@@ -50,8 +50,9 @@ export class CompanyService {
     }
     // Kısa ad eşleşmesi: "EmlaXo Türkiye - Kocaeli Emlak Ofisi" ↔ "EmlaXo Türkiye"
     const sk = companyNameKey(shortCompanyName(h.name))
-    if (sk.length >= 5) {
-      const rows = this.db.all<{ id: number; name: string; city: string | null }>("SELECT id, name, city FROM companies WHERE merged_into IS NULL AND (name_key = ? OR name_key LIKE ? || '%') LIMIT 20", sk, sk)
+    if (sk.length >= 3) {
+      // Birebir kısa ad eşitliği 3+ karakterde; önek araması yanlış eşleşmeyi azaltmak için 5+ karakterde
+      const rows = this.db.all<{ id: number; name: string; city: string | null }>("SELECT id, name, city FROM companies WHERE merged_into IS NULL AND (name_key = ? OR (length(?) >= 5 AND name_key LIKE ? || '%')) LIMIT 20", sk, sk, sk)
       const r = rows.find((x) => companyNameKey(shortCompanyName(x.name)) === sk && (!h.city || !x.city || fold(x.city) === fold(h.city)))
       if (r) return { id: r.id, reason: `benzer şirket adı ("${shortCompanyName(r.name)}")`, certain: false }
     }

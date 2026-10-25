@@ -35,6 +35,10 @@ export class StatsService {
       recentReports: d.all("SELECT f.id, f.name, f.path, f.kind, f.created_at, c.name AS company_name FROM files f LEFT JOIN companies c ON c.id = f.company_id WHERE f.kind IN ('report_pdf','research_report','offer_pdf') ORDER BY f.created_at DESC LIMIT 6"),
       byGroup: d.all("SELECT priority_group AS k, COUNT(*) AS n FROM companies WHERE merged_into IS NULL AND archived_at IS NULL AND priority_group IS NOT NULL GROUP BY priority_group"),
       byStage: d.all("SELECT s.label AS k, COUNT(c.id) AS n FROM stages s LEFT JOIN companies c ON c.stage_key = s.key AND c.merged_into IS NULL AND c.archived_at IS NULL GROUP BY s.key ORDER BY s.position"),
+      todayTasks: d.all("SELECT t.id, t.title, t.due_at, t.priority, t.company_id, c.name AS company_name FROM tasks t LEFT JOIN companies c ON c.id = t.company_id WHERE t.status IN ('open','in_progress') AND date(t.due_at, 'localtime') = date('now', 'localtime') ORDER BY t.due_at LIMIT 20"),
+      overdueTasks: d.all("SELECT t.id, t.title, t.due_at, t.priority, t.company_id, c.name AS company_name FROM tasks t LEFT JOIN companies c ON c.id = t.company_id WHERE t.status IN ('open','in_progress') AND t.due_at IS NOT NULL AND date(t.due_at, 'localtime') < date('now', 'localtime') ORDER BY t.due_at LIMIT 20"),
+      pendingMatches: n(d, "SELECT COUNT(*) AS n FROM match_candidates WHERE status = 'pending'"),
+      newLeads: n(d, "SELECT COUNT(*) AS n FROM inbound_requests WHERE status = 'new'"),
       upcomingTasks: d.all("SELECT t.id, t.title, t.due_at, t.priority, c.name AS company_name FROM tasks t LEFT JOIN companies c ON c.id = t.company_id WHERE t.status IN ('open','in_progress') ORDER BY t.due_at IS NULL, t.due_at LIMIT 6")
     }
   }
