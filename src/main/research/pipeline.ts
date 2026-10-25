@@ -77,12 +77,14 @@ export class ResearchPipeline {
       return 'closed'
     }
     const dup = this.companies.findDuplicate({ name: hit.name, website: hit.website, phone: hit.phone, sourceRef: hit.sourceRef, city: hit.city, email: hit.email })
-    if (dup) {
+    if (dup && dup.certain) {
+      this.db.run("UPDATE companies SET last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", dup.id)
       if (this.db.get('SELECT 1 FROM research_results WHERE research_id = ? AND company_id = ?', researchId, dup.id)) return 'skipped'
       this.db.run("INSERT INTO research_results(research_id, company_id, raw_name, raw, phase, status, duplicate_of, message) VALUES (?,?,?,?, 'found', 'duplicate', ?, ?)", researchId, dup.id, hit.name, JSON.stringify(hit), dup.id, `Yinelenen kayıt: ${dup.reason}`)
       return 'duplicate'
     }
     const id = this.companies.create({ ...hit, sector: hit.sector ?? sector, source })
+    if (dup) this.companies.addMatchCandidate(id, dup.id, dup.reason)
     this.db.run("UPDATE companies SET stage_key = 'researching' WHERE id = ?", id)
     this.db.run("INSERT INTO research_results(research_id, company_id, raw_name, raw, phase, status, message) VALUES (?,?,?,?, 'found', 'pending', 'Şirket bulundu')", researchId, id, hit.name, JSON.stringify(hit))
     return 'new'

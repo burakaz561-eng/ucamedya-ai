@@ -4,7 +4,8 @@ import type { Db, Row } from '../database/db'
 import { j } from '../database/db'
 import type { FileStore } from '../files/folders'
 import type { SearchHit } from '@shared/types'
-import { cleanBusinessName, companyNameKey, domainOf, emailKey, isOfficialWebsite, normalizeWebsite, phoneKey, FREE_MAIL } from '@shared/text'
+import { cleanBusinessName, companyNameKey, fold, domainOf, emailKey, isOfficialWebsite, normalizeWebsite, phoneKey, FREE_MAIL } from '@shared/text'
+import { shortCompanyName } from '@shared/message-templates'
 
 export class CompanyService {
   constructor(
@@ -17,32 +18,42 @@ export class CompanyService {
   }
 
   /** Aynı şirket var mı? Alan adı, sağlayıcı kimliği, telefon veya ad+şehir ile eşleştirir. */
-  findDuplicate(h: { name: string; website?: string | null; phone?: string | null; sourceRef?: string | null; city?: string | null; email?: string | null }): { id: number; reason: string } | null {
+  /**
+   * Yinelenen kayıt arar. certain=true: aynı sağlayıcı kaydı, alan adı, telefon, kurumsal e-posta ya da aynı ad + aynı şehir.
+   * certain=false: yalnızca ad benzerliği (şehir bilinmiyor ya da kısa ad eşleşmesi) → kullanıcı onayı gerekir.
+   */
+  findDuplicate(h: { name: string; website?: string | null; phone?: string | null; sourceRef?: string | null; city?: string | null; email?: string | null }): { id: number; reason: string; certain: boolean } | null {
     if (h.sourceRef) {
       const r = this.db.get<{ id: number }>('SELECT id FROM companies WHERE source_ref = ? AND merged_into IS NULL', h.sourceRef)
-      if (r) return { id: r.id, reason: 'aynı sağlayıcı kaydı' }
+      if (r) return { id: r.id, reason: 'aynı sağlayıcı kaydı', certain: true }
     }
     const dom = h.website && isOfficialWebsite(h.website) ? domainOf(h.website) : ''
     if (dom) {
       const r = this.db.get<{ id: number }>('SELECT id FROM companies WHERE domain = ? AND merged_into IS NULL', dom)
-      if (r) return { id: r.id, reason: `aynı web sitesi (${dom})` }
+      if (r) return { id: r.id, reason: `aynı web sitesi (${dom})`, certain: true }
     }
     const pk = h.phone ? phoneKey(h.phone) : ''
     if (pk) {
       const r = this.db.get<{ company_id: number }>("SELECT cc.company_id FROM company_contacts cc JOIN companies c ON c.id = cc.company_id WHERE cc.type IN ('phone','whatsapp') AND cc.value_key = ? AND c.merged_into IS NULL", pk)
-      if (r) return { id: r.company_id, reason: 'aynı telefon numarası' }
+      if (r) return { id: r.company_id, reason: 'aynı telefon numarası', certain: true }
     }
     const ek = h.email ? emailKey(h.email) : ''
     if (ek && !FREE_MAIL.test(ek)) {
       const r = this.db.get<{ company_id: number }>("SELECT company_id FROM company_contacts WHERE type = 'email' AND value_key = ?", ek)
-      if (r) return { id: r.company_id, reason: 'aynı e-posta adresi' }
+      if (r) return { id: r.company_id, reason: 'aynı e-posta adresi', certain: true }
     }
     const nk = companyNameKey(h.name)
     if (nk.length >= 3) {
-      const r = h.city
-        ? this.db.get<{ id: number }>('SELECT id FROM companies WHERE name_key = ? AND (city = ? OR city IS NULL) AND merged_into IS NULL', nk, h.city)
-        : this.db.get<{ id: number }>('SELECT id FROM companies WHERE name_key = ? AND merged_into IS NULL', nk)
-      if (r) return { id: r.id, reason: 'aynı şirket adı ve şehir' }
+      const r = this.db.get<{ id: number; city: string | null }>('SELECT id, city FROM companies WHERE name_key = ? AND merged_into IS NULL ORDER BY (city = ?) DESC, id LIMIT 1', nk, h.city ?? null)
+      if (r && h.city && r.city && fold(r.city) === fold(h.city)) return { id: r.id, reason: 'aynı şirket adı ve şehir', certain: true }
+      if (r && (!h.city || !r.city)) return { id: r.id, reason: 'aynı şirket adı (şehir bilinmiyor)', certain: false }
+    }
+    // Kısa ad eşleşmesi: "EmlaXo Türkiye - Kocaeli Emlak Ofisi" ↔ "EmlaXo Türkiye"
+    const sk = companyNameKey(shortCompanyName(h.name))
+    if (sk.length >= 5) {
+      const rows = this.db.all<{ id: number; name: string; city: string | null }>("SELECT id, name, city FROM companies WHERE merged_into IS NULL AND (name_key = ? OR name_key LIKE ? || '%') LIMIT 20", sk, sk)
+      const r = rows.find((x) => companyNameKey(shortCompanyName(x.name)) === sk && (!h.city || !x.city || fold(x.city) === fold(h.city)))
+      if (r) return { id: r.id, reason: `benzer şirket adı ("${shortCompanyName(r.name)}")`, certain: false }
     }
     return null
   }
@@ -133,12 +144,17 @@ export class CompanyService {
       files: this.db.all('SELECT * FROM files WHERE company_id = ? ORDER BY created_at DESC LIMIT 300', id),
       activity: this.db.all('SELECT * FROM activity_logs WHERE company_id = ? ORDER BY id DESC LIMIT 200', id),
       researches: this.db.all('SELECT rp.id, rp.name, rr.status, rr.phase FROM research_results rr JOIN research_projects rp ON rp.id = rr.research_id WHERE rr.company_id = ? ORDER BY rr.id DESC', id),
-      suppressed: this.isSuppressed(id)
+      suppressed: this.isSuppressed(id),
+      stageHistory: this.db.all("SELECT h.*, f.label AS from_label, t.label AS to_label FROM stage_history h LEFT JOIN stages f ON f.key = h.from_key LEFT JOIN stages t ON t.key = h.to_key WHERE h.company_id = ? ORDER BY h.id DESC LIMIT 100", id),
+      inbound: this.db.all('SELECT * FROM inbound_requests WHERE company_id = ? ORDER BY id DESC', id).map((r) => ({ ...r, answers: j(r.answers, {}), consent: j(r.consent, {}) })),
+      concepts: this.db.all('SELECT id, analysis_id, pdf_path, created_at FROM concepts WHERE company_id = ? ORDER BY id DESC', id),
+      nextTask: this.db.get("SELECT id, title, due_at, priority FROM tasks WHERE company_id = ? AND status IN ('open','in_progress') ORDER BY due_at IS NULL, due_at, id LIMIT 1", id) ?? null,
+      pendingMatches: this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM match_candidates WHERE status = 'pending' AND (company_id = ? OR candidate_id = ?)", id, id)!.n
     }
   }
 
   update(id: number, patch: Record<string, unknown>) {
-    const allowed = ['name', 'sector', 'city', 'district', 'address', 'website', 'description', 'stage_key', 'owner', 'next_action', 'next_action_at', 'internal_notes', 'contact_purpose', 'protected', 'priority_group']
+    const allowed = ['name', 'sector', 'city', 'district', 'address', 'website', 'description', 'stage_key', 'owner', 'next_action', 'next_action_at', 'internal_notes', 'contact_purpose', 'protected', 'priority_group', 'contact_preference']
     const sets: string[] = []
     const vals: (string | number | null)[] = []
     for (const [k, v] of Object.entries(patch)) {
@@ -226,8 +242,32 @@ export class CompanyService {
   }
 
   // ---------- Birleştirme ve tekrar bulma ----------
-  duplicates(): { a: Row; b: Row; reason: string }[] {
-    const out: { a: Row; b: Row; reason: string }[] = []
+  /** Emin olunmayan eşleşmeyi onay kuyruğuna ekler. */
+  addMatchCandidate(companyId: number, candidateId: number, reason: string) {
+    if (companyId === candidateId) return
+    const [a, b] = companyId < candidateId ? [companyId, candidateId] : [candidateId, companyId]
+    this.db.run('INSERT OR IGNORE INTO match_candidates(company_id, candidate_id, reason) VALUES (?,?,?)', a, b, reason)
+  }
+
+  /** Eşleşme kararı: ayrı kayıt olarak bırak (bir daha önerilmez). */
+  keepSeparate(a: number, b: number) {
+    const [x, y] = a < b ? [a, b] : [b, a]
+    this.db.run("INSERT INTO match_candidates(company_id, candidate_id, reason, status, decided_at) VALUES (?,?, 'kullanıcı kararı', 'separate', strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(company_id, candidate_id) DO UPDATE SET status = 'separate', decided_at = excluded.decided_at", x, y)
+    this.log(x, 'Eşleşme reddedildi', `#${y} ayrı bir şirket olarak bırakıldı`)
+  }
+
+  pendingMatchCount(): number {
+    return this.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM match_candidates m JOIN companies a ON a.id = m.company_id JOIN companies b ON b.id = m.candidate_id WHERE m.status = 'pending' AND a.merged_into IS NULL AND b.merged_into IS NULL")!.n
+  }
+
+  duplicates(): { a: Row; b: Row; reason: string; uncertain?: boolean }[] {
+    const out: { a: Row; b: Row; reason: string; uncertain?: boolean }[] = []
+    const separate = new Set(this.db.all<{ company_id: number; candidate_id: number }>("SELECT company_id, candidate_id FROM match_candidates WHERE status = 'separate'").map((r) => `${r.company_id}-${r.candidate_id}`))
+    for (const p of this.db.all<{ a: number; b: number; reason: string }>("SELECT m.company_id AS a, m.candidate_id AS b, m.reason FROM match_candidates m JOIN companies c1 ON c1.id = m.company_id JOIN companies c2 ON c2.id = m.candidate_id WHERE m.status = 'pending' AND c1.merged_into IS NULL AND c2.merged_into IS NULL")) {
+      const a = this.db.get('SELECT id, name, city, domain, created_at FROM companies WHERE id = ?', p.a)
+      const b = this.db.get('SELECT id, name, city, domain, created_at FROM companies WHERE id = ?', p.b)
+      if (a && b) out.push({ a, b, reason: `${p.reason} — onayınız gerekiyor`, uncertain: true })
+    }
     const pairs = this.db.all<{ a: number; b: number; reason: string }>(
       `SELECT c1.id AS a, c2.id AS b, 'aynı web sitesi' AS reason FROM companies c1 JOIN companies c2 ON c1.domain = c2.domain AND c1.id < c2.id
          WHERE c1.domain IS NOT NULL AND c1.merged_into IS NULL AND c2.merged_into IS NULL
@@ -238,6 +278,7 @@ export class CompanyService {
        LIMIT 200`
     )
     for (const p of pairs) {
+      if (separate.has(`${Math.min(p.a, p.b)}-${Math.max(p.a, p.b)}`) || out.some((o) => (o.a.id === p.a && o.b.id === p.b) || (o.a.id === p.b && o.b.id === p.a))) continue
       const a = this.db.get('SELECT id, name, city, domain, created_at FROM companies WHERE id = ?', p.a)
       const b = this.db.get('SELECT id, name, city, domain, created_at FROM companies WHERE id = ?', p.b)
       if (a && b) out.push({ a, b, reason: p.reason })
@@ -252,7 +293,7 @@ export class CompanyService {
       for (const cc of this.db.all<{ type: string; value: string; kind: string; label: string; source_url: string; source_type: string; verified_at: string }>('SELECT * FROM company_contacts WHERE company_id = ?', drop)) {
         this.addContact(keep, { type: cc.type, value: cc.value, kind: cc.kind, label: cc.label, sourceUrl: cc.source_url, sourceType: cc.source_type, verified: !!cc.verified_at })
       }
-      for (const t of ['research_results', 'website_analyses', 'screenshots', 'outreach_drafts', 'outreach_messages', 'communication_events', 'offers', 'tasks', 'notes', 'files', 'activity_logs']) {
+      for (const t of ['research_results', 'website_analyses', 'screenshots', 'outreach_drafts', 'outreach_messages', 'communication_events', 'offers', 'tasks', 'notes', 'files', 'activity_logs', 'inbound_requests', 'concepts']) {
         this.db.run(`UPDATE ${t} SET company_id = ? WHERE company_id = ?`, keep, drop)
       }
       this.db.run('INSERT OR IGNORE INTO company_tags(company_id, tag_id) SELECT ?, tag_id FROM company_tags WHERE company_id = ?', keep, drop)
@@ -262,6 +303,7 @@ export class CompanyService {
       for (const col of ['sector', 'city', 'district', 'address', 'website', 'domain', 'description', 'source_ref', 'business_status']) {
         if (k[col] == null && d[col] != null) this.db.run(`UPDATE companies SET ${col} = ? WHERE id = ?`, d[col] as string, keep)
       }
+      this.db.run("UPDATE match_candidates SET status = 'merged', decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE status = 'pending' AND company_id = ? AND candidate_id = ?", Math.min(keep, drop), Math.max(keep, drop))
       this.db.run("UPDATE companies SET merged_into = ?, archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", keep, drop)
     })
     this.log(keep, 'Kayıt birleştirildi', `#${drop} bu kayda birleştirildi`)

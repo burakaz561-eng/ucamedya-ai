@@ -224,7 +224,7 @@ describe('veritabanı ve müşteri havuzu', () => {
   it('migration tüm tabloları oluşturur ve tohumlar', () => {
     const tables = db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table'").map((t) => t.name)
     for (const t of ['companies', 'company_contacts', 'research_projects', 'research_results', 'website_analyses', 'analysis_findings', 'screenshots', 'outreach_drafts', 'outreach_permissions', 'outreach_messages', 'communication_events', 'email_accounts', 'whatsapp_accounts', 'offers', 'offer_items', 'tasks', 'automation_runs', 'integrations', 'activity_logs', 'app_settings']) expect(tables).toContain(t)
-    expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM stages')!.n).toBe(16)
+    expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM stages')!.n).toBe(17)
     expect(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM services')!.n).toBe(12)
     expect(db.migrate()).toBe(db.latestVersion())
   })
@@ -426,5 +426,64 @@ describe('ücretsiz e-posta sınıflandırması', () => {
     expect(kinds['biri@hotmail.com']).toBe('personal')
     ;(db as any).close?.()
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('0.3 CRM: eşleşme onayı, aşama geçmişi, migration yedeği', () => {
+  let dir: string
+  let db: Db
+  let cs: CompanyService
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'uca-crm-'))
+    db = new Db(join(dir, 'crm.sqlite'))
+    db.migrate()
+    cs = new CompanyService(db, new FileStore(db, () => join(dir, 'data')))
+  })
+  afterEach(() => {
+    ;(db.raw as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
+  })
+  it('alan adı eşleşmesi kesin, yalnızca kısa ad benzerliği onay ister', () => {
+    const a = cs.create({ name: 'EmlaXo Türkiye', city: 'Kocaeli', website: 'https://www.emlaxo.com', source: 'manual' } as any)
+    expect(cs.findDuplicate({ name: 'Başka Ad', website: 'https://emlaxo.com/tr' })).toMatchObject({ id: a, certain: true })
+    expect(cs.findDuplicate({ name: 'EmlaXo Türkiye - Kocaeli Emlak Ofisi', city: 'Kocaeli' })).toMatchObject({ id: a, certain: false })
+    expect(cs.findDuplicate({ name: 'EmlaXo Türkiye', city: 'Kocaeli' })).toMatchObject({ id: a, certain: true })
+    expect(cs.findDuplicate({ name: 'Tamamen Farklı Firma', city: 'Kocaeli' })).toBeNull()
+  })
+  it('onay kuyruğu: ayrı bırakılan çift tekrar önerilmez, birleştirme kuyruğu kapatır', () => {
+    const a = cs.create({ name: 'Yıldız Yapı', source: 'manual' } as any)
+    const b = cs.create({ name: 'Yıldız Yapı - Gebze', source: 'manual' } as any)
+    const c = cs.create({ name: 'Yıldız Yapı İnşaat', source: 'manual' } as any)
+    cs.addMatchCandidate(b, a, 'benzer şirket adı')
+    cs.addMatchCandidate(c, a, 'benzer şirket adı')
+    expect(cs.pendingMatchCount()).toBe(2)
+    cs.keepSeparate(a, b)
+    cs.merge(a, c)
+    expect(cs.pendingMatchCount()).toBe(0)
+    expect(cs.duplicates().some((d) => [d.a.id, d.b.id].includes(b))).toBe(false)
+  })
+  it('aşama değişikliği geçmişe yazılır (SQL ile değişse bile)', () => {
+    const a = cs.create({ name: 'Acme Ltd', source: 'manual' } as any)
+    cs.update(a, { stage_key: 'review' })
+    db.run("UPDATE companies SET stage_key = 'replied' WHERE id = ?", a)
+    const h = db.all<{ from_key: string; to_key: string }>('SELECT from_key, to_key FROM stage_history WHERE company_id = ? ORDER BY id', a)
+    expect(h.map((x) => x.to_key)).toEqual(['review', 'replied'])
+  })
+  it('eski şemadan yükseltme: önce yedek alınır, "Yanıt geldi" doğru sıraya eklenir', async () => {
+    const { MIGRATIONS } = await import('../src/main/database/migrations')
+    const { DEFAULT_STAGES } = await import('../src/shared/constants')
+    const file = join(dir, 'eski.sqlite')
+    const old = new Db(file)
+    old.raw.exec(MIGRATIONS[0].sql)
+    old.raw.exec(MIGRATIONS[1].sql)
+    old.raw.exec('PRAGMA user_version = 2')
+    DEFAULT_STAGES.filter((s) => s.key !== 'replied').forEach((s, i) => old.run('INSERT INTO stages(key,label,color,position,terminal,system) VALUES (?,?,?,?,?,1)', s.key, s.label, s.color, i, !!s.terminal))
+    expect(old.migrate()).toBe(old.latestVersion())
+    expect(old.lastPreMigrationBackup).toBeTruthy()
+    expect(verifyBackupFile(old.lastPreMigrationBackup!).version).toBe(2)
+    const order = old.all<{ key: string }>('SELECT key FROM stages ORDER BY position').map((r) => r.key)
+    expect(order.indexOf('replied')).toBe(order.indexOf('waiting_reply') + 1)
+    expect(order.length).toBe(17)
+    ;(old.raw as any).close?.()
   })
 })

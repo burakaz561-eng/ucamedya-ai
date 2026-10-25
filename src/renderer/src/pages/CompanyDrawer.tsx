@@ -24,7 +24,7 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
   const { ask, node } = useConfirm()
   const { go } = useNav()
   useEffect(() => {
-    if (c) setEdit({ name: c.name, sector: c.sector ?? '', city: c.city ?? '', district: c.district ?? '', website: c.website ?? '', address: c.address ?? '', description: c.description ?? '', owner: c.owner ?? '', next_action: c.next_action ?? '', next_action_at: c.next_action_at ?? '', internal_notes: c.internal_notes ?? '', contact_purpose: c.contact_purpose ?? '', stage_key: c.stage_key })
+    if (c) setEdit({ name: c.name, sector: c.sector ?? '', city: c.city ?? '', district: c.district ?? '', website: c.website ?? '', address: c.address ?? '', description: c.description ?? '', owner: c.owner ?? '', next_action: c.next_action ?? '', next_action_at: c.next_action_at ?? '', internal_notes: c.internal_notes ?? '', contact_purpose: c.contact_purpose ?? '', stage_key: c.stage_key, contact_preference: c.contact_preference ?? '' })
     if (c?.analyses?.length && !analysisId) setAnalysisId(c.analyses[0].id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [c])
@@ -78,6 +78,9 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
                   <input className="input" list="owners" value={edit.owner ?? ''} onChange={(e) => setEdit({ ...edit, owner: e.target.value })} />
                   <datalist id="owners">{settings?.owners?.map((o: string) => <option key={o} value={o} />)}</datalist>
                 </Field>
+                <Field label="İletişim tercihi"><select className="select" value={edit.contact_preference ?? ''} onChange={(e) => setEdit({ ...edit, contact_preference: e.target.value })}>
+                  <option value="">Belirtilmedi</option><option value="email">E-posta</option><option value="phone">Telefon</option><option value="whatsapp">WhatsApp</option><option value="meeting">Yüz yüze / toplantı</option>
+                </select></Field>
                 <Field label="Sonraki işlem tarihi"><input className="input" type="date" value={(edit.next_action_at ?? '').slice(0, 10)} onChange={(e) => setEdit({ ...edit, next_action_at: e.target.value })} /></Field>
               </div>
               <div className="col" style={{ marginTop: 12 }}>
@@ -113,13 +116,30 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
                 {c.potential_services?.map((s: string) => <Badge key={s} tone="brand">{s}</Badge>)}
               </div>
             </Card>
+            {c.inbound?.length > 0 && (
+              <Card title={`Web sitesi talepleri (${c.inbound.length})`}>
+                <div className="col" style={{ gap: 10 }}>
+                  {c.inbound.map((r: any) => (
+                    <div key={r.id} className="small">
+                      <div><b>{r.kind === 'audit' ? 'Ücretsiz ön analiz' : r.service ?? 'Teklif talebi'}</b> <span className="muted">· {fmtDate(r.submitted_at ?? r.received_at, true)}</span></div>
+                      {r.message && <div style={{ whiteSpace: 'pre-wrap' }}>{r.message}</div>}
+                      <div className="tiny muted">{Object.entries(r.answers ?? {}).map(([k, v]) => `${k}: ${v}`).join(' · ')}</div>
+                      <div className="tiny faint">{[r.person_name, r.email, r.phone, r.contact_pref ? `tercih: ${r.contact_pref}` : null].filter(Boolean).join(' · ')}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
             <Tags c={c} reload={reload} />
             <Notes c={c} reload={reload} />
             <Card title="Kayıt bilgileri">
               <div className="kv">
                 <div>Kaynak</div><div>{c.source}{c.business_status ? ` · ${c.business_status}` : ''}{c.rating ? ` · ${c.rating}★ (${c.rating_count})` : ''}</div>
                 <div>İlk araştırma</div><div>{fmtDate(c.first_research_at, true)}</div>
-                <div>Son analiz</div><div>{fmtDate(c.last_analysis_at, true)}</div>
+                <div>Son analiz</div><div>{c.last_analysis_at ? fmtDate(c.last_analysis_at, true) : 'henüz yok'}</div>
+                <div>Son görülme</div><div>{c.last_seen_at ? `${fmtDate(c.last_seen_at, true)} (başka bir aramada tekrar bulundu)` : '—'}</div>
+                <div>Sonraki görev</div><div>{c.nextTask ? <>{c.nextTask.title}{c.nextTask.due_at ? <span className="muted"> · {fmtDate(c.nextTask.due_at)}</span> : null}</> : <span className="muted">yok</span>}</div>
+                {c.pendingMatches > 0 && <><div>Olası eşleşme</div><div><Badge tone="info">{c.pendingMatches} kayıt onayınızı bekliyor</Badge> <span className="tiny muted">Müşteri Havuzu → Yinelenenleri bul</span></div></>}
                 <div>Araştırmalar</div><div>{c.researches.map((r: any) => r.name).join(', ') || '—'}</div>
                 <div>Klasör</div><div className="tiny ellipsis" title={c.folder_path}>{c.folder_path ?? 'henüz oluşturulmadı'}</div>
               </div>
@@ -166,6 +186,15 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
         </Card>
       )}
 
+      {tab === 'history' && c.stageHistory?.length > 0 && (
+        <Card title="Aşama geçmişi">
+          <div className="timeline">
+            {c.stageHistory.map((h: any) => (
+              <div key={h.id} className="ev small"><b>{h.from_label ?? h.from_key ?? '—'} → {h.to_label ?? h.to_key}</b><div className="tiny faint">{fmtDate(h.at, true)}</div></div>
+            ))}
+          </div>
+        </Card>
+      )}
       {tab === 'history' && (
         <div className="timeline">
           {c.activity.map((a: any) => (

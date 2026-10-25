@@ -172,17 +172,18 @@ function AddCompany({ onClose, onCreated }: { onClose: () => void; onCreated: (i
 }
 
 function Duplicates({ onClose }: { onClose: () => void }) {
-  const { data, reload } = useApi<{ a: any; b: any; reason: string }[]>('companies:duplicates', undefined, ['companies'])
+  const { data, reload } = useApi<{ a: any; b: any; reason: string; uncertain?: boolean }[]>('companies:duplicates', undefined, ['companies'])
   const { run } = useAction()
   return (
-    <Modal title="Yinelenen kayıtlar" sub="Aynı alan adı, telefon veya ad+şehir eşleşmeleri. Birleştirme, tüm analiz, mesaj ve dosyaları korunan kayda taşır." onClose={onClose} size="wide">
+    <Modal title="Yinelenen kayıtlar" sub="Aynı alan adı, telefon veya ad+şehir eşleşmeleri; yalnızca ad benzerliği olanlar onayınızı bekler. Birleştirme, tüm analiz, mesaj ve dosyaları korunan kayda taşır." onClose={onClose} size="wide">
       {!data ? <Loading /> : !data.length ? <div className="muted">Yinelenen kayıt bulunmadı.</div> : data.map((d, i) => (
         <div key={i} className="list-item">
           <div style={{ flex: 1 }}><b>{d.a.name}</b> <span className="muted small">#{d.a.id} · {d.a.city ?? '—'} · {d.a.domain ?? '—'}</span></div>
-          <Badge tone="warning">{d.reason}</Badge>
+          <Badge tone={d.uncertain ? 'info' : 'warning'}>{d.reason}</Badge>
           <div style={{ flex: 1 }}><b>{d.b.name}</b> <span className="muted small">#{d.b.id} · {d.b.city ?? '—'} · {d.b.domain ?? '—'}</span></div>
           <Btn size="sm" onClick={() => run(() => call('companies:merge', { keep: d.a.id, drop: d.b.id }), 'Kayıtlar birleştirildi').then(reload)}>Soldakinde birleştir</Btn>
           <Btn size="sm" onClick={() => run(() => call('companies:merge', { keep: d.b.id, drop: d.a.id }), 'Kayıtlar birleştirildi').then(reload)}>Sağdakinde birleştir</Btn>
+          <Btn size="sm" variant="ghost" onClick={() => run(() => call('companies:keepSeparate', { a: d.a.id, b: d.b.id }), 'Ayrı kayıt olarak bırakıldı').then(reload)}>Farklı şirketler</Btn>
         </div>
       ))}
     </Modal>

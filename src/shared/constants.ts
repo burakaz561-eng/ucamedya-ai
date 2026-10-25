@@ -53,6 +53,7 @@ export const DEFAULT_STAGES: { key: string; label: string; color: string; termin
   { key: 'approved', label: 'İletişim için onaylandı', color: 'brand' },
   { key: 'contacted', label: 'İlk iletişim kuruldu', color: 'brand' },
   { key: 'waiting_reply', label: 'Yanıt bekleniyor', color: 'warning' },
+  { key: 'replied', label: 'Yanıt geldi', color: 'success' },
   { key: 'meeting', label: 'Görüşme planlandı', color: 'success' },
   { key: 'offer_prepared', label: 'Teklif hazırlandı', color: 'info' },
   { key: 'offer_sent', label: 'Teklif gönderildi', color: 'info' },

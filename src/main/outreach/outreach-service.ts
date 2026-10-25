@@ -651,7 +651,7 @@ export class OutreachService {
         optOuts++
         this.companies.suppressCompany(companyId, `Yanıtta iletişim reddi: "${mail.subject.slice(0, 80)}"`, 'reply')
       } else {
-        this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('contacted','waiting_reply','approved') THEN 'contacted' ELSE stage_key END WHERE id = ?", companyId)
+        this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('contacted','waiting_reply','approved') THEN (CASE WHEN EXISTS (SELECT 1 FROM stages WHERE key = 'replied') THEN 'replied' ELSE 'contacted' END) ELSE stage_key END WHERE id = ?", companyId)
         this.db.run("INSERT INTO tasks(title, company_id, kind, priority, due_at) VALUES (?, ?, 'reply_review', 'high', date('now','+1 day'))", 'Müşterinin yanıtını değerlendir', companyId)
       }
     }

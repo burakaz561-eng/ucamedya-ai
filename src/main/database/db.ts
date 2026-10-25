@@ -1,6 +1,8 @@
 // SQLite bağlantısı (Node.js yerleşik node:sqlite — yerel derleme gerektirmez, Windows/macOS aynı).
 
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { MIGRATIONS } from './migrations'
 import { DEFAULT_SERVICES, DEFAULT_STAGES } from '@shared/constants'
 import { DEFAULT_PROFILES } from '../research/profiles'
@@ -14,6 +16,8 @@ export const INTEGRATION_KEYS = [
 
 export class Db {
   readonly raw: DatabaseSync
+  /** Son migration öncesi alınan yedeğin yolu (yoksa null) */
+  lastPreMigrationBackup: string | null = null
 
   constructor(readonly path: string) {
     this.raw = new DatabaseSync(path)
@@ -72,7 +76,16 @@ export class Db {
     if (current > this.latestVersion()) {
       throw new Error(`Veritabanı bu uygulama sürümünden daha yeni (şema ${current}). Lütfen uygulamanın güncel sürümünü kurun.`)
     }
-    for (const m of MIGRATIONS.filter((x) => x.version > current).sort((a, b) => a.version - b.version)) {
+    const pending = MIGRATIONS.filter((x) => x.version > current).sort((a, b) => a.version - b.version)
+    // Var olan veritabanında şema değişmeden önce tam kopya alınır (geri dönüş noktası)
+    if (current > 0 && pending.length && this.path !== ':memory:') {
+      const dir = join(dirname(this.path), 'Yedekler')
+      mkdirSync(dir, { recursive: true })
+      const file = join(dir, `ucamedya-ai-migration-oncesi-v${current}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`)
+      this.raw.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`)
+      this.lastPreMigrationBackup = file
+    }
+    for (const m of pending) {
       this.tx(() => {
         this.raw.exec(m.sql)
         this.raw.exec(`PRAGMA user_version = ${m.version}`)

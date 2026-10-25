@@ -466,5 +466,78 @@ CREATE TABLE backups (
     version: 2,
     name: 'firmanın yayımladığı ücretsiz e-posta adresleri kurumsal',
     sql: `UPDATE company_contacts SET kind = 'corporate' WHERE type = 'email' AND kind = 'personal' AND source_type IN ('website','provider');`
+  },
+  {
+    version: 3,
+    name: '0.3: aşama geçmişi, eşleşme onayı, web sitesi talepleri, tasarım konseptleri',
+    sql: `
+CREATE TABLE stage_history (
+  id INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  from_key TEXT,
+  to_key TEXT NOT NULL,
+  at TEXT NOT NULL DEFAULT (${ts})
+);
+CREATE INDEX idx_stage_history_company ON stage_history(company_id, at);
+CREATE TRIGGER trg_stage_history AFTER UPDATE OF stage_key ON companies
+  WHEN OLD.stage_key IS NOT NEW.stage_key
+  BEGIN INSERT INTO stage_history(company_id, from_key, to_key) VALUES (NEW.id, OLD.stage_key, NEW.stage_key); END;
+
+-- Emin olunmayan eşleşmeler: kullanıcı "birleştir" ya da "ayrı kayıt" diyene kadar bekler
+CREATE TABLE match_candidates (
+  id INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  candidate_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | merged | separate
+  created_at TEXT NOT NULL DEFAULT (${ts}),
+  decided_at TEXT,
+  UNIQUE(company_id, candidate_id)
+);
+
+-- Web sitesinden (WordPress eklentisi) gelen teklif / ön analiz talepleri
+CREATE TABLE inbound_requests (
+  id INTEGER PRIMARY KEY,
+  site TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'quote', -- quote | audit
+  company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+  person_name TEXT,
+  company_name TEXT,
+  email TEXT,
+  phone TEXT,
+  website TEXT,
+  service TEXT,
+  answers TEXT NOT NULL DEFAULT '{}',
+  message TEXT,
+  contact_pref TEXT,
+  page_url TEXT,
+  consent TEXT NOT NULL DEFAULT '{}',
+  submitted_at TEXT,
+  received_at TEXT NOT NULL DEFAULT (${ts}),
+  status TEXT NOT NULL DEFAULT 'new', -- new | reviewed | converted | spam
+  match_reason TEXT,
+  UNIQUE(site, external_id)
+);
+CREATE INDEX idx_inbound_company ON inbound_requests(company_id);
+
+CREATE TABLE concepts (
+  id INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  analysis_id INTEGER REFERENCES website_analyses(id) ON DELETE SET NULL,
+  data TEXT NOT NULL,
+  pdf_path TEXT,
+  created_at TEXT NOT NULL DEFAULT (${ts})
+);
+
+ALTER TABLE companies ADD COLUMN last_seen_at TEXT;
+ALTER TABLE companies ADD COLUMN contact_preference TEXT;
+
+-- "Yanıt geldi" aşaması (yalnızca aşamaları zaten olan kurulumlarda; yeni kurulum varsayılanlardan alır)
+UPDATE stages SET position = position + 1 WHERE EXISTS (SELECT 1 FROM stages WHERE key = 'waiting_reply') AND NOT EXISTS (SELECT 1 FROM stages WHERE key = 'replied') AND position > (SELECT position FROM stages WHERE key = 'waiting_reply');
+INSERT INTO stages(key, label, color, position, terminal, system)
+  SELECT 'replied', 'Yanıt geldi', 'success', COALESCE((SELECT position FROM stages WHERE key = 'waiting_reply') + 1, (SELECT MAX(position) + 1 FROM stages)), 0, 1
+  WHERE EXISTS (SELECT 1 FROM stages) AND NOT EXISTS (SELECT 1 FROM stages WHERE key = 'replied');
+`
   }
 ]

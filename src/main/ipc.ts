@@ -208,8 +208,9 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'companies:create': (p) => {
       const v = z.object({ name: str(200).min(2), sector: optStr(80), city: optStr(60), district: optStr(60), website: optStr(300), phone: optStr(40), email: optStr(200), address: optStr(300) }).parse(p)
       const dup = s.companies.findDuplicate({ name: v.name, website: v.website, phone: v.phone, city: v.city, email: v.email })
-      if (dup) throw new Error(`Bu şirket zaten kayıtlı görünüyor (#${dup.id}, ${dup.reason}).`)
+      if (dup?.certain) throw new Error(`Bu şirket zaten kayıtlı görünüyor (#${dup.id}, ${dup.reason}).`)
       const cid = s.companies.create({ name: v.name, sector: v.sector ?? null, city: v.city ?? undefined, district: v.district ?? undefined, website: v.website ?? undefined, phone: v.phone ?? undefined, email: v.email ?? undefined, address: v.address ?? undefined, source: 'manual' })
+      if (dup) s.companies.addMatchCandidate(cid, dup.id, dup.reason)
       s.analysis.rescore(cid)
       return cid
     },
@@ -228,6 +229,9 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'companies:delete': (p) => s.companies.hardDelete(id.parse(p?.id)),
     'companies:merge': (p) => s.companies.merge(id.parse(p?.keep), id.parse(p?.drop)),
     'companies:duplicates': () => s.companies.duplicates(),
+    'companies:keepSeparate': (p) => s.companies.keepSeparate(id.parse(p?.a), id.parse(p?.b)),
+    'companies:pendingMatches': () => s.companies.pendingMatchCount(),
+    'companies:stageHistory': (p) => s.db.all("SELECT h.*, f.label AS from_label, t.label AS to_label FROM stage_history h LEFT JOIN stages f ON f.key = h.from_key LEFT JOIN stages t ON t.key = h.to_key WHERE h.company_id = ? ORDER BY h.at DESC LIMIT 100", id.parse(p?.id)),
     'companies:suppress': (p) => s.companies.suppressCompany(id.parse(p?.id), str(300).parse(p?.reason ?? 'Kullanıcı işaretledi'), 'user'),
     'companies:rescore': (p) => {
       for (const cid of ids.parse(p?.ids)) s.analysis.rescore(cid)
