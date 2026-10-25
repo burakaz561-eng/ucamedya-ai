@@ -464,10 +464,11 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'offers:get': (p) => s.offers.get(id.parse(p?.id)),
     'offers:save': (p) => s.offers.save(z.object({
       id: id.optional(), companyId: id, title: str(200).min(1), status: optStr(20), currency: optStr(5), discountType: z.enum(['none', 'percent', 'amount']).optional(), discountValue: z.number().min(0).optional(), vatIncluded: z.boolean().optional(),
-      deliveryEstimate: optStr(200), validUntil: optStr(30), paymentTerms: optStr(1000), notes: optStr(4000),
+      deliveryEstimate: optStr(200), validUntil: optStr(30), paymentTerms: optStr(1000), notes: optStr(4000), analysisSummary: optStr(6000), nextSteps: optStr(3000),
       items: z.array(z.object({ serviceId: id.nullable().optional(), name: str(200).min(1), description: optStr(1000), quantity: z.number().positive(), unit: optStr(30), unitPrice: z.number().min(0), vatRate: z.number().min(0).max(100) })).min(1).max(100)
     }).parse(p) as Parameters<AppServices['offers']['save']>[0]),
     'offers:pdf': (p) => s.offers.pdf(id.parse(p?.id)),
+    'offers:fromAnalysis': (p) => s.offers.draftFromAnalysis(id.parse(p?.companyId)),
     'offers:delete': (p) => s.db.run("DELETE FROM offers WHERE id = ? AND status = 'draft'", id.parse(p?.id)),
     'tasks:list': (p) => s.offers.listTasks(p ?? {}),
     'tasks:save': (p) => s.offers.saveTask(z.object({ id: id.optional(), title: str(200), description: optStr(4000), companyId: id.nullable().optional(), offerId: id.nullable().optional(), assignee: optStr(80), dueAt: optStr(30), remindAt: optStr(30), priority: optStr(10), status: optStr(20), kind: optStr(40) }).parse(p) as Parameters<AppServices['offers']['saveTask']>[0]),
@@ -534,6 +535,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     },
 
     // ---------------- Raporlar ----------------
+    'reports:metrics': (p) => s.stats.salesMetrics(z.number().int().min(1).max(3650).optional().parse(p?.days)),
     'reports:sales': () => ({
       funnel: s.db.all("SELECT s.label AS k, COUNT(c.id) AS n FROM stages s LEFT JOIN companies c ON c.stage_key = s.key AND c.merged_into IS NULL GROUP BY s.key ORDER BY s.position"),
       offers: s.db.all('SELECT status AS k, COUNT(*) AS n, COALESCE(SUM(total),0) AS total FROM offers GROUP BY status'),

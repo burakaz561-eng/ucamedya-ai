@@ -163,7 +163,7 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
 
       {tab === 'offers' && (
         <div className="grid g2">
-          <Card title="Teklifler" actions={<Btn size="sm" onClick={() => (onClose(), go('offers', { companyId: id, new: 1 }))}>Yeni teklif</Btn>}>
+          <Card title="Teklifler" actions={<div className="row" style={{ gap: 6 }}>{c.potential_services?.length > 0 && <Btn size="sm" variant="primary" onClick={async () => { const oid = await run(() => call<number>('offers:fromAnalysis', { companyId: id }), 'Analizden teklif taslağı oluşturuldu — fiyatları girip onaylayın'); if (oid) { onClose(); go('offers', { offerId: oid }) } }}>Analizden teklif taslağı</Btn>}<Btn size="sm" onClick={() => (onClose(), go('offers', { companyId: id, new: 1 }))}>Yeni teklif</Btn></div>}>
             {c.offers.length ? c.offers.map((o: any) => (
               <div key={o.id} className="list-item small"><b>{o.number}</b><span style={{ flex: 1 }}>{o.title}</span><Badge>{o.status}</Badge><span>{fmtMoney(o.total, o.currency)}</span></div>
             )) : <div className="muted small">Teklif yok.</div>}

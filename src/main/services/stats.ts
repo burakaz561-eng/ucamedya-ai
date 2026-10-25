@@ -43,6 +43,61 @@ export class StatsService {
     }
   }
 
+  /**
+   * Satış analitiği. Her metrik gerçek kayıtlardan hesaplanır; hesaplamak için gereken veri kaynağı yoksa
+   * value=null ve açıklama döner (0 ile "veri yok" ayrı tutulur). days verilirse yalnızca o dönem.
+   */
+  salesMetrics(days?: number) {
+    const d = this.db
+    const since = days ? new Date(Date.now() - days * 86400000).toISOString() : '0000'
+    const cnt = (sql: string, ...p: (string | number)[]) => d.get<{ n: number }>(sql, ...p)?.n ?? 0
+    const imap = !!d.get("SELECT 1 FROM email_accounts WHERE status = 'ok' AND imap_host IS NOT NULL")
+    const sentAny = cnt("SELECT COUNT(*) AS n FROM outreach_messages WHERE status IN ('sent','delivered','read') AND test_mode = 0")
+    const site = d.get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'settings'")?.value ?? ''
+    const leadsOn = !!d.get('SELECT 1 FROM inbound_requests LIMIT 1') || /"siteUrl":"https?:/.test(site)
+    const m = (key: string, label: string, value: number | null, note?: string) => ({ key, label, value, note: note ?? null })
+    const sent = cnt("SELECT COUNT(*) AS n FROM outreach_messages WHERE status IN ('sent','delivered','read') AND test_mode = 0 AND COALESCE(sent_at, queued_at) >= ?", since)
+    const verified = cnt("SELECT COUNT(*) AS n FROM outreach_messages WHERE test_mode = 0 AND COALESCE(sent_at, queued_at) >= ? AND (status IN ('delivered','read') OR (status = 'sent' AND provider_message_id LIKE 'web:%'))", since)
+    const replies = cnt("SELECT COUNT(DISTINCT company_id) AS n FROM communication_events WHERE kind = 'reply' AND occurred_at >= ?", since)
+    const reachedStage = (keys: string[]) => cnt(`SELECT COUNT(DISTINCT company_id) AS n FROM stage_history WHERE to_key IN (${keys.map(() => '?').join(',')}) AND at >= ?`, ...keys, since)
+    const positive = cnt("SELECT COUNT(DISTINCT h.company_id) AS n FROM stage_history h WHERE h.to_key IN ('meeting','offer_prepared','offer_sent','negotiation','won') AND h.at >= ? AND EXISTS (SELECT 1 FROM communication_events e WHERE e.company_id = h.company_id AND e.direction = 'in')", since)
+    const metrics = [
+      m('found', 'Bulunan şirket', cnt('SELECT COUNT(*) AS n FROM companies WHERE merged_into IS NULL AND created_at >= ?', since)),
+      m('analyzed', 'Analizi tamamlanan şirket', cnt("SELECT COUNT(DISTINCT company_id) AS n FROM website_analyses WHERE status = 'done' AND company_id IS NOT NULL AND created_at >= ?", since)),
+      m('eligible', 'İletişime uygun şirket', cnt(`SELECT COUNT(*) AS n FROM companies c WHERE c.merged_into IS NULL AND c.archived_at IS NULL AND c.created_at >= ?
+          AND COALESCE(c.priority_group, '') NOT IN ('not_suitable','opted_out') AND c.stage_key NOT IN ('do_not_contact','lost','won')
+          AND NOT EXISTS (SELECT 1 FROM suppression_list s WHERE s.company_id = c.id)
+          AND EXISTS (SELECT 1 FROM company_contacts x WHERE x.company_id = c.id AND x.type IN ('email','phone','whatsapp') AND x.kind = 'corporate')`, since), 'Kurumsal e-posta veya telefonu olan, ret listesinde olmayan, kazanılmamış/kaybedilmemiş şirketler.'),
+      m('sent', 'Gönderilen mesaj', sent, 'Test gönderimleri hariç.'),
+      m('verified', 'Teslimi doğrulanan mesaj', sentAny ? verified : null, sentAny ? 'Webmail/WhatsApp Web\'de gönderim ekranda doğrulananlar ve teslim bilgisi gelenler. WhatsApp masaüstünde "gönderdim" onayı doğrulama sayılmaz.' : 'Henüz gerçek gönderim yok.'),
+      m('replies', 'Gelen yanıt (şirket)', imap || replies ? replies : null, imap ? undefined : 'Otomatik yanıt takibi (IMAP) bağlı değil; yalnızca elle kaydedilen yanıtlar sayılır.'),
+      m('positive', 'Olumlu yanıt', imap || replies || positive ? positive : null, 'Bize yazdıktan sonra görüşme, teklif ya da kazanıldı aşamasına geçen şirketler.'),
+      m('meetings', 'Planlanan görüşme', reachedStage(['meeting'])),
+      m('offers_sent', 'Gönderilen teklif', cnt("SELECT COUNT(*) AS n FROM offers WHERE status IN ('sent','negotiation','won','lost') AND updated_at >= ?", since)),
+      m('won', 'Kazanılan müşteri', reachedStage(['won'])),
+      m('lost', 'Kaybedilen fırsat', reachedStage(['lost'])),
+      m('web_leads', 'Web sitesinden gelen talep', leadsOn ? cnt('SELECT COUNT(*) AS n FROM inbound_requests WHERE received_at >= ?', since) : null, leadsOn ? undefined : 'Web sitesi bağlantısı kurulmadı (Web Sitesi Talepleri → Bağlantı ayarları).'),
+      m('google_opps', 'Google araştırmasından gelen fırsat', cnt("SELECT COUNT(*) AS n FROM companies WHERE merged_into IS NULL AND source IN ('google_browser','google_places','serpapi','brave') AND priority_group IN ('priority','high_fit') AND created_at >= ?", since), '"Öncelikli fırsat" ya da "Yüksek hizmet uyumu" grubundakiler.')
+    ]
+    const offerSum = (statuses: string[]) => d.get<{ v: number; n: number }>(`SELECT COALESCE(SUM(total),0) AS v, COUNT(*) AS n FROM offers WHERE status IN (${statuses.map(() => '?').join(',')}) AND updated_at >= ?`, ...statuses, since)!
+    const est = offerSum(['sent', 'negotiation'])
+    const won = offerSum(['won'])
+    return {
+      metrics,
+      revenue: {
+        estimated: est.n ? est.v : null,
+        estimatedCount: est.n,
+        realized: won.n ? won.v : null,
+        realizedCount: won.n,
+        note: 'Tahminî gelir: gönderilmiş ve müzakeredeki tekliflerin toplamı (kazanılacağı anlamına gelmez). Gerçekleşen gelir: "kazanıldı" işaretlenen teklifler. Tahsilat bilgisi tutulmaz.'
+      },
+      byService: d.all("SELECT COALESCE(service, 'Belirtilmemiş') AS k, COUNT(*) AS n FROM inbound_requests WHERE received_at >= ? GROUP BY k ORDER BY n DESC", since),
+      offeredServices: d.all("SELECT i.name AS k, COUNT(DISTINCT i.offer_id) AS n FROM offer_items i JOIN offers o ON o.id = i.offer_id WHERE o.status <> 'draft' AND o.updated_at >= ? GROUP BY i.name ORDER BY n DESC LIMIT 10", since),
+      bySource: d.all("SELECT CASE WHEN source = 'website' THEN 'Web sitesi talebi' WHEN source IN ('google_browser','google_places','serpapi','brave') THEN 'Google araştırması' WHEN source = 'import' THEN 'CSV içe aktarma' ELSE 'Elle eklendi' END AS k, COUNT(*) AS n FROM companies WHERE merged_into IS NULL AND created_at >= ? GROUP BY k ORDER BY n DESC", since),
+      bySector: d.all("SELECT COALESCE(sector,'Belirtilmemiş') AS k, COUNT(*) AS n FROM companies WHERE merged_into IS NULL AND created_at >= ? GROUP BY k ORDER BY n DESC LIMIT 12", since)
+    }
+  }
+
   /** Günlük / haftalık / aylık zaman serisi. */
   series(period: 'day' | 'week' | 'month', span = 14) {
     const fmt = period === 'day' ? '%Y-%m-%d' : period === 'week' ? '%Y-%W' : '%Y-%m'

@@ -18,7 +18,7 @@ const ST_TONE: Record<string, string> = { draft: 'neutral', sent: 'info', negoti
 export default function Offers({ params }: PageProps) {
   const [tab, setTab] = useState<'offers' | 'catalog'>('offers')
   const { data: offers, reload } = useApi<any[]>('offers:list', {}, ['offers'])
-  const [edit, setEdit] = useState<{ id?: number; companyId?: number } | null>(params.new ? { companyId: params.companyId as number } : null)
+  const [edit, setEdit] = useState<{ id?: number; companyId?: number } | null>(params.offerId ? { id: params.offerId as number } : params.new ? { companyId: params.companyId as number } : null)
   const { openCompany } = useNav()
   const { run } = useAction()
   const funnel = useMemo(() => {
@@ -106,10 +106,10 @@ function OfferEditor({ id, companyId, onClose }: { id?: number; companyId?: numb
   const { data: existing } = useApi<any>(id ? 'offers:get' : null, { id }, [])
   const { data: services } = useApi<any[]>('services:list', undefined, [])
   const { data: companies } = useApi<{ rows: any[] }>('companies:list', { limit: 2000, sort: 'name', dir: 'asc' }, [])
-  const [f, setF] = useState<any>({ companyId: companyId ?? '', title: 'Web sitesi yenileme teklifi', status: 'draft', currency: 'TRY', discountType: 'none', discountValue: 0, vatIncluded: false, deliveryEstimate: '', validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), paymentTerms: '%50 sipariş onayında, %50 teslimde.', notes: '', items: [] as any[] })
+  const [f, setF] = useState<any>({ companyId: companyId ?? '', title: 'Web sitesi yenileme teklifi', status: 'draft', currency: 'TRY', discountType: 'none', discountValue: 0, vatIncluded: false, deliveryEstimate: '', validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), paymentTerms: '%50 sipariş onayında, %50 teslimde.', notes: '', analysisSummary: '', nextSteps: '', items: [] as any[] })
   const { run, busy } = useAction()
   useEffect(() => {
-    if (existing) setF({ id: existing.id, companyId: existing.company_id, title: existing.title, status: existing.status, currency: existing.currency, discountType: existing.discount_type, discountValue: existing.discount_value, vatIncluded: !!existing.vat_included, deliveryEstimate: existing.delivery_estimate ?? '', validUntil: existing.valid_until ?? '', paymentTerms: existing.payment_terms ?? '', notes: existing.notes ?? '', items: existing.items.map((i: any) => ({ serviceId: i.service_id, name: i.name, description: i.description, quantity: i.quantity, unit: i.unit, unitPrice: i.unit_price, vatRate: i.vat_rate })) })
+    if (existing) setF({ id: existing.id, companyId: existing.company_id, title: existing.title, status: existing.status, currency: existing.currency, discountType: existing.discount_type, discountValue: existing.discount_value, vatIncluded: !!existing.vat_included, deliveryEstimate: existing.delivery_estimate ?? '', validUntil: existing.valid_until ?? '', paymentTerms: existing.payment_terms ?? '', notes: existing.notes ?? '', analysisSummary: existing.analysis_summary ?? '', nextSteps: existing.next_steps ?? '', items: existing.items.map((i: any) => ({ serviceId: i.service_id, name: i.name, description: i.description, quantity: i.quantity, unit: i.unit, unitPrice: i.unit_price, vatRate: i.vat_rate })) })
   }, [existing])
   const t = computeTotals(f.items, f.discountType, Number(f.discountValue) || 0, f.vatIncluded)
   const setItem = (i: number, k: string, v: unknown) => setF({ ...f, items: f.items.map((x: any, j: number) => (j === i ? { ...x, [k]: v } : x)) })
@@ -154,6 +154,9 @@ function OfferEditor({ id, companyId, onClose }: { id?: number; companyId?: numb
             <Field label="Teklif geçerlilik tarihi"><input className="input" type="date" value={f.validUntil} onChange={(e) => setF({ ...f, validUntil: e.target.value })} /></Field>
           </div>
           <Field label="Ödeme koşulları"><textarea className="textarea" style={{ minHeight: 60 }} value={f.paymentTerms} onChange={(e) => setF({ ...f, paymentTerms: e.target.value })} /></Field>
+          {f.items.some((i: any) => !(Number(i.unitPrice) > 0)) && <Callout tone="warn">Fiyatı girilmemiş kalem var. Fiyatları siz girip onaylamadan teklif "Gönderildi" yapılamaz; PDF "TASLAK" uyarısıyla oluşur.</Callout>}
+          <Field label="Mevcut durum ve analiz özeti" hint="Analizden gelir; müşteriye gidecek metni kontrol edin."><textarea className="textarea" style={{ minHeight: 90 }} value={f.analysisSummary} onChange={(e) => setF({ ...f, analysisSummary: e.target.value })} /></Field>
+          <Field label="Sonraki adımlar"><textarea className="textarea" style={{ minHeight: 70 }} value={f.nextSteps} onChange={(e) => setF({ ...f, nextSteps: e.target.value })} /></Field>
           <Field label="Ek açıklamalar"><textarea className="textarea" style={{ minHeight: 80 }} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
         </div>
         <div className="col" style={{ gap: 12 }}>

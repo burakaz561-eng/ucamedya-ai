@@ -23,6 +23,9 @@ export interface OfferInput {
   validUntil?: string | null
   paymentTerms?: string | null
   notes?: string | null
+  analysisSummary?: string | null
+  nextSteps?: string | null
+  origin?: 'manual' | 'analysis'
   status?: string
   items: { serviceId?: number | null; name: string; description?: string | null; quantity: number; unit?: string | null; unitPrice: number; vatRate: number }[]
 }
@@ -58,8 +61,37 @@ export class OfferService {
     return `UCA-${y}-${String(n).padStart(4, '0')}`
   }
 
+  /**
+   * Analizden teklif TASLAĞI: önerilen hizmetler katalogdan alınır; katalogda fiyatı olmayan kalemin fiyatı 0 gelir
+   * ve kullanıcı girmeden teklif "gönderildi" yapılamaz. Teslim süresi tahmin edilmez (boş gelir).
+   */
+  draftFromAnalysis(companyId: number): number {
+    const c = this.db.get<{ name: string; potential_services: string; analysis_summary: string | null; website: string | null }>('SELECT name, potential_services, analysis_summary, website FROM companies WHERE id = ?', companyId)
+    if (!c) throw new Error('Şirket bulunamadı')
+    const keys = j<string[]>(c.potential_services, [])
+    const svc = keys.length ? this.db.all<{ id: number; key: string; name: string; description: string | null; unit: string | null; price: number | null; vat_rate: number }>(`SELECT id, key, name, description, unit, price, vat_rate FROM services WHERE active = 1 AND key IN (${keys.map(() => '?').join(',')}) ORDER BY position`, ...keys) : []
+    if (!svc.length) throw new Error('Bu şirketin analizinde önerilen bir hizmet yok. Teklifi "Yeni teklif" ile elle oluşturun.')
+    const a = this.db.get<{ id: number }>("SELECT id FROM website_analyses WHERE company_id = ? AND status = 'done' ORDER BY id DESC LIMIT 1", companyId)
+    const findings = a ? this.db.all<{ title: string; severity: string }>("SELECT title, severity FROM analysis_findings WHERE analysis_id = ? AND severity IN ('high','medium') ORDER BY severity = 'high' DESC, id LIMIT 6", a.id) : []
+    const summary = [c.analysis_summary, findings.length ? `Öne çıkan bulgular:\n${findings.map((f) => `• ${f.title}`).join('\n')}` : null].filter(Boolean).join('\n\n') || null
+    const o = this.settings.get().offers
+    return this.save({
+      companyId,
+      title: `${c.name} — dijital iyileştirme teklifi`,
+      status: 'draft',
+      origin: 'analysis',
+      analysisSummary: summary,
+      nextSteps: o?.defaultNextSteps ?? null,
+      paymentTerms: o?.defaultPaymentTerms ?? null,
+      validUntil: o?.validityDays ? new Date(Date.now() + o.validityDays * 86400000).toISOString().slice(0, 10) : null,
+      deliveryEstimate: null,
+      items: svc.map((s) => ({ serviceId: s.id, name: s.name, description: s.description, quantity: 1, unit: s.unit, unitPrice: s.price ?? 0, vatRate: s.vat_rate }))
+    })
+  }
+
   save(input: OfferInput & { id?: number }) {
     if (!input.items.length) throw new Error('Teklife en az bir hizmet kalemi ekleyin')
+    if (['sent', 'negotiation', 'won'].includes(input.status ?? '') && input.items.some((i) => !(i.unitPrice > 0))) throw new Error('Fiyatı girilmemiş kalem var. Tüm fiyatları girip onaylamadan teklif "gönderildi" olarak işaretlenemez.')
     if (input.items.some((i) => !(i.unitPrice >= 0) || !(i.quantity > 0))) throw new Error('Miktar sıfırdan büyük, fiyat negatif olmayan bir sayı olmalı')
     const t = computeTotals(input.items, input.discountType ?? 'none', input.discountValue ?? 0, !!input.vatIncluded)
     return this.db.tx(() => {
@@ -71,14 +103,14 @@ export class OfferService {
         const hist = j<unknown[]>(prev.history, [])
         hist.push({ ...histEntry, note: prev.status !== (input.status ?? prev.status) ? `Durum: ${prev.status} → ${input.status}` : 'Güncellendi' })
         this.db.run(
-          "UPDATE offers SET company_id = ?, title = ?, status = ?, currency = ?, discount_type = ?, discount_value = ?, vat_included = ?, delivery_estimate = ?, valid_until = ?, payment_terms = ?, notes = ?, subtotal = ?, vat_total = ?, total = ?, history = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
-          input.companyId, input.title, input.status ?? prev.status, input.currency ?? 'TRY', input.discountType ?? 'none', input.discountValue ?? 0, !!input.vatIncluded, input.deliveryEstimate ?? null, input.validUntil ?? null, input.paymentTerms ?? null, input.notes ?? null, t.subtotal, t.vatTotal, t.total, JSON.stringify(hist), id
+          "UPDATE offers SET company_id = ?, title = ?, status = ?, currency = ?, discount_type = ?, discount_value = ?, vat_included = ?, delivery_estimate = ?, valid_until = ?, payment_terms = ?, notes = ?, analysis_summary = ?, next_steps = ?, subtotal = ?, vat_total = ?, total = ?, history = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?",
+          input.companyId, input.title, input.status ?? prev.status, input.currency ?? 'TRY', input.discountType ?? 'none', input.discountValue ?? 0, !!input.vatIncluded, input.deliveryEstimate ?? null, input.validUntil ?? null, input.paymentTerms ?? null, input.notes ?? null, input.analysisSummary ?? null, input.nextSteps ?? null, t.subtotal, t.vatTotal, t.total, JSON.stringify(hist), id
         )
         this.db.run('DELETE FROM offer_items WHERE offer_id = ?', id)
       } else {
         id = this.db.run(
-          'INSERT INTO offers(number, company_id, title, status, currency, discount_type, discount_value, vat_included, delivery_estimate, valid_until, payment_terms, notes, subtotal, vat_total, total, history) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          this.nextNumber(), input.companyId, input.title, input.status ?? 'draft', input.currency ?? 'TRY', input.discountType ?? 'none', input.discountValue ?? 0, !!input.vatIncluded, input.deliveryEstimate ?? null, input.validUntil ?? null, input.paymentTerms ?? null, input.notes ?? null, t.subtotal, t.vatTotal, t.total, JSON.stringify([{ ...histEntry, note: 'Oluşturuldu' }])
+          'INSERT INTO offers(number, company_id, title, status, currency, discount_type, discount_value, vat_included, delivery_estimate, valid_until, payment_terms, notes, analysis_summary, next_steps, origin, subtotal, vat_total, total, history) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          this.nextNumber(), input.companyId, input.title, input.status ?? 'draft', input.currency ?? 'TRY', input.discountType ?? 'none', input.discountValue ?? 0, !!input.vatIncluded, input.deliveryEstimate ?? null, input.validUntil ?? null, input.paymentTerms ?? null, input.notes ?? null, input.analysisSummary ?? null, input.nextSteps ?? null, input.origin ?? 'manual', t.subtotal, t.vatTotal, t.total, JSON.stringify([{ ...histEntry, note: input.origin === 'analysis' ? 'Analizden taslak oluşturuldu (fiyatlar kullanıcı onayı bekliyor)' : 'Oluşturuldu' }])
         ).lastInsertRowid
         this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('won','lost','do_not_contact','archived','offer_sent','negotiation') THEN stage_key ELSE 'offer_prepared' END WHERE id = ?", input.companyId)
         this.companies.log(input.companyId, 'Teklif hazırlandı', input.title, 'user', 'offer', id)
@@ -117,7 +149,9 @@ export class OfferService {
       items: o.items.map((i) => ({ name: String(i.name), description: (i.description as string) ?? null, quantity: Number(i.quantity), unit: (i.unit as string) ?? null, unitPrice: Number(i.unit_price), vatRate: Number(i.vat_rate) })),
       currency: String(o.currency), discountLabel: o.discount_type === 'percent' ? `(%${o.discount_value})` : null, discountAmount: t.discount,
       subtotal: t.subtotal, vatTotal: t.vatTotal, total: t.total, vatIncluded: !!o.vat_included,
-      delivery: (o.delivery_estimate as string) ?? null, paymentTerms: (o.payment_terms as string) ?? null, notes: (o.notes as string) ?? null
+      delivery: (o.delivery_estimate as string) ?? null, paymentTerms: (o.payment_terms as string) ?? null, notes: (o.notes as string) ?? null,
+      analysisSummary: (o.analysis_summary as string) ?? null, nextSteps: (o.next_steps as string) ?? null,
+      draft: o.status === 'draft' || o.items.some((i) => !(Number(i.unit_price) > 0))
     })
     const out = join(this.files.companyDir(o.company_id as number), 'offers', `teklif-${safeSlug(String(o.number))}.pdf`)
     await htmlToPdf(html, out)

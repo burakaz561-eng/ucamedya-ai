@@ -31,6 +31,17 @@ export default function Settings({ settings, setSettings, params }: PageProps) {
       ]} />
 
       {tab === 'brand' && <Card><BrandForm settings={settings} onChange={setSettings} /></Card>}
+      {tab === 'brand' && (
+        <Card title="Teklif varsayılanları">
+          <div className="col" style={{ gap: 12, maxWidth: 820 }}>
+            <div className="small muted">"Analizden teklif taslağı" bu değerlerle başlar. Fiyatlar Teklif ve Satış → Hizmet kataloğundan gelir; katalogda fiyatı olmayan hizmet 0 TL gelir ve siz girmeden teklif gönderildi yapılamaz. Teslim süresi otomatik doldurulmaz.</div>
+            <Field label="Teklif geçerlilik süresi (gün)"><input className="input" type="number" min={1} max={365} value={s.offers.validityDays} onChange={(e) => setS({ ...s, offers: { ...s.offers, validityDays: num(e.target.value, 1, 365) } })} style={{ maxWidth: 160 }} /></Field>
+            <Field label="Varsayılan ödeme koşulları"><textarea className="textarea" style={{ minHeight: 60 }} value={s.offers.defaultPaymentTerms} onChange={(e) => setS({ ...s, offers: { ...s.offers, defaultPaymentTerms: e.target.value } })} /></Field>
+            <Field label="Varsayılan sonraki adımlar"><textarea className="textarea" style={{ minHeight: 80 }} value={s.offers.defaultNextSteps} onChange={(e) => setS({ ...s, offers: { ...s.offers, defaultNextSteps: e.target.value } })} /></Field>
+            <div><Btn variant="primary" icon={<Save />} onClick={() => save({ offers: s.offers })}>Kaydet</Btn></div>
+          </div>
+        </Card>
+      )}
 
       {tab === 'look' && (
         <Card>

@@ -177,6 +177,10 @@ export interface OfferPdfData {
   delivery: string | null
   paymentTerms: string | null
   notes: string | null
+  analysisSummary?: string | null
+  nextSteps?: string | null
+  /** Taslak (onaylanmamış fiyat) ise PDF'te belirgin uyarı */
+  draft?: boolean
 }
 
 export function offerHtml(b: BrandForPdf, o: OfferPdfData): string {
@@ -188,6 +192,8 @@ export function offerHtml(b: BrandForPdf, o: OfferPdfData): string {
   <div class="small">Tarih: ${trDate(o.date)}<br>${o.validUntil ? `Geçerlilik: ${trDate(o.validUntil)}` : ''}</div></div>
 </div>
 <div class="card"><div class="small muted">SAYIN</div><b>${esc(o.company.name)}</b><div class="small">${esc([o.company.address, o.company.city].filter(Boolean).join(', '))}${o.company.email ? `<br>${esc(o.company.email)}` : ''}${o.company.phone ? ` · ${esc(o.company.phone)}` : ''}</div></div>
+${o.draft ? `<div class="card" style="border:1.5px solid #E95A1B;color:#B3410E;margin-top:12px"><b>TASLAK</b> — Bu teklif henüz onaylanmamıştır; fiyatlar ve kapsam kesinleşmemiştir.</div>` : ''}
+${o.analysisSummary ? `<h3>Mevcut durum ve analiz özeti</h3><p style="white-space:pre-wrap">${esc(o.analysisSummary)}</p>` : ''}
 <h2>${esc(o.title)}</h2>
 <table><tr><th>#</th><th>Hizmet</th><th class="right">Miktar</th><th class="right">Birim fiyat</th><th class="right">KDV</th><th class="right">Tutar</th></tr>
 ${o.items.map((it, i) => `<tr><td>${i + 1}</td><td><b>${esc(it.name)}</b>${it.description ? `<br><span class="small muted">${esc(it.description)}</span>` : ''}</td><td class="right">${it.quantity} ${esc(it.unit ?? '')}</td><td class="right">${money(it.unitPrice, o.currency)}</td><td class="right">%${it.vatRate}</td><td class="right">${money(it.unitPrice * it.quantity, o.currency)}</td></tr>`).join('')}
@@ -201,6 +207,7 @@ ${o.discountAmount ? `<tr><td>İndirim ${esc(o.discountLabel ?? '')}</td><td cla
 ${o.delivery ? `<h3>Tahmini teslim süresi</h3><p>${esc(o.delivery)}</p>` : ''}
 ${o.paymentTerms ? `<h3>Ödeme koşulları</h3><p>${esc(o.paymentTerms)}</p>` : ''}
 ${o.notes ? `<h3>Açıklamalar</h3><p style="white-space:pre-wrap">${esc(o.notes)}</p>` : ''}
+${o.nextSteps ? `<h3>Sonraki adımlar</h3><p style="white-space:pre-wrap">${esc(o.nextSteps)}</p>` : ''}
 <div class="footer">${o.validUntil ? `Bu teklif ${trDate(o.validUntil)} tarihine kadar geçerlidir. ` : ''}${esc(b.name)} · ${esc(b.website)}</div>
 </body></html>`
 }

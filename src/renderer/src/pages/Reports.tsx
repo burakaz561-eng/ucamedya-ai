@@ -1,7 +1,8 @@
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts'
 import { FileText, Download } from 'lucide-react'
 import { call, useApi } from '../lib/api'
-import { Btn, Card, Loading, useAction } from '../components/ui'
+import { useState } from 'react'
+import { Btn, Card, Loading, Seg, useAction } from '../components/ui'
 import { fmtMoney } from '../lib/format'
 import type { PageProps } from '../lib/page'
 
@@ -29,6 +30,8 @@ function HBar({ data, height = 260 }: { data: { k: string; n: number }[]; height
 export default function Reports(_: PageProps) {
   const { data: d } = useApi<any>('reports:sales', undefined, ['*'])
   const { data: researches } = useApi<any[]>('research:list', undefined, ['research'])
+  const [period, setPeriod] = useState<'all' | '90' | '30'>('all')
+  const { data: m } = useApi<any>('reports:metrics', { days: period === 'all' ? undefined : Number(period) }, ['*'])
   const { run } = useAction()
   if (!d) return <Loading />
   return (
@@ -42,6 +45,31 @@ export default function Reports(_: PageProps) {
           <Btn icon={<Download />} onClick={() => run(() => call<string | null>('companies:export', { format: 'xlsx', filters: {} }), (p) => (p ? `Excel kaydedildi: ${p}` : 'İptal edildi'))}>Müşteri listesi + bulgular (Excel)</Btn>
         </div>
       </div>
+      <Card title="Satış analitiği" actions={<Seg value={period} onChange={setPeriod} items={[{ key: 'all', label: 'Tümü' }, { key: '90', label: 'Son 90 gün' }, { key: '30', label: 'Son 30 gün' }]} />}>
+        {!m ? <Loading /> : (
+          <div className="col" style={{ gap: 14 }}>
+            <div className="metric-grid">
+              {m.metrics.map((x: any) => (
+                <div key={x.key} className="metric" title={x.note ?? undefined}>
+                  <div className="tiny muted">{x.label}</div>
+                  <div className="metric-v">{x.value == null ? <span className="muted small">Veri yok</span> : x.value.toLocaleString('tr-TR')}</div>
+                  {x.note && <div className="tiny faint">{x.note}</div>}
+                </div>
+              ))}
+            </div>
+            <div className="grid g2">
+              <div className="metric"><div className="tiny muted">Tahminî gelir ({m.revenue.estimatedCount} açık teklif)</div><div className="metric-v">{m.revenue.estimated == null ? <span className="muted small">Veri yok</span> : fmtMoney(m.revenue.estimated)}</div></div>
+              <div className="metric"><div className="tiny muted">Gerçekleşen gelir ({m.revenue.realizedCount} kazanılan teklif)</div><div className="metric-v">{m.revenue.realized == null ? <span className="muted small">Veri yok</span> : fmtMoney(m.revenue.realized)}</div></div>
+            </div>
+            <div className="tiny faint">{m.revenue.note}</div>
+            <div className="grid g3">
+              <div><b className="small">Hizmet bazında web sitesi talebi</b><HBar data={m.byService} height={200} /></div>
+              <div><b className="small">Tekliflerde yer alan hizmetler</b><HBar data={m.offeredServices} height={200} /></div>
+              <div><b className="small">Müşteri kaynağı</b><HBar data={m.bySource} height={200} /></div>
+            </div>
+          </div>
+        )}
+      </Card>
       <div className="grid g2">
         <Card title="Satış hunisi (aşama bazında şirket)"><HBar data={d.funnel.filter((x: any) => x.n > 0)} height={320} /></Card>
         <Card title="En sık görülen web sitesi sorunları"><HBar data={d.topIssues} height={320} /></Card>

@@ -303,3 +303,8 @@ table.dt td.wrap { white-space: normal; }
 .kanban-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-1, 0 1px 3px rgba(0,0,0,.08)); }
 .kanban-card:active { cursor: grabbing; }
 .danger-text { color: var(--danger, #c0392b); }
+
+/* Satış analitiği */
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.metric { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+.metric-v { font-size: 22px; font-weight: 700; font-family: var(--font-display, inherit); }

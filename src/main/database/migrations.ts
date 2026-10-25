@@ -532,6 +532,9 @@ CREATE TABLE concepts (
 
 ALTER TABLE companies ADD COLUMN last_seen_at TEXT;
 ALTER TABLE companies ADD COLUMN contact_preference TEXT;
+ALTER TABLE offers ADD COLUMN analysis_summary TEXT;
+ALTER TABLE offers ADD COLUMN next_steps TEXT;
+ALTER TABLE offers ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual'; -- manual | analysis
 
 -- "Yanıt geldi" aşaması (yalnızca aşamaları zaten olan kurulumlarda; yeni kurulum varsayılanlardan alır)
 UPDATE stages SET position = position + 1 WHERE EXISTS (SELECT 1 FROM stages WHERE key = 'waiting_reply') AND NOT EXISTS (SELECT 1 FROM stages WHERE key = 'replied') AND position > (SELECT position FROM stages WHERE key = 'waiting_reply');
