@@ -154,6 +154,12 @@ export function CompanyDrawer({ id, onClose }: { id: number; onClose: () => void
             <div className="row wrap">
               {c.analyses.map((a: any) => <button key={a.id} className={`chip ${analysisId === a.id ? 'on' : ''}`} onClick={() => setAnalysisId(a.id)}>v{a.version} · {fmtDate(a.created_at)} · {a.status === 'done' ? `${a.scores?.overall ?? '—'} puan` : a.status}</button>)}
             </div>
+            <Card title="Tasarım iyileştirme konsepti" actions={c.analyses.some((a: any) => a.status === 'done') && <Btn size="sm" variant="primary" onClick={async () => { const r = await run(() => call<{ pdf: string }>('concepts:create', { companyId: id }), 'Konsept sunumu hazırlandı'); if (r) { reload(); void call('shell:openPath', { path: r.pdf }) } }}>Konsept oluştur (PDF)</Btn>}>
+              <div className="small muted">Analize dayalı örnek ana sayfa düzeni, başlık ve hizmet kartları, iletişim butonları, mobil yerleşim, renk/tipografi ve önce-sonra karşılaştırması. Gerçek siteye hiçbir şey uygulanmaz; şirketin logosu ve görselleri izinsiz kullanılmaz.</div>
+              {c.concepts?.map((k: any) => (
+                <div key={k.id} className="list-item small"><span style={{ flex: 1 }}>Konsept #{k.id} · {fmtDate(k.created_at, true)}</span>{k.pdf_path && <Btn size="sm" onClick={() => call('shell:openPath', { path: k.pdf_path })}>PDF'i aç</Btn>}</div>
+              ))}
+            </Card>
             {analysisId && <AnalysisView id={analysisId} key={analysisId} />}
           </div>
         ) : <Callout>{c.website ? 'Bu şirket için henüz analiz yok. Yukarıdaki "Analiz et" düğmesini kullanın.' : 'Şirketin web sitesi bulunamadı; bu kayıt "web sitesi olmayan şirket" fırsatı olarak değerlendirilir.'}</Callout>

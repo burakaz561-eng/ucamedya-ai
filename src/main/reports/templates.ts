@@ -23,7 +23,7 @@ export interface BrandForPdf {
   fontCss: string
 }
 
-const baseCss = (b: BrandForPdf) => `
+export const baseCss = (b: BrandForPdf) => `
 ${b.fontCss}
 @page { size: A4; margin: 16mm 14mm 18mm; }
 * { box-sizing: border-box; }
@@ -61,7 +61,7 @@ td { border-bottom: 1px solid #EAE7E0; padding: 6px 4px; vertical-align: top; }
 .pb { page-break-before: always; }
 `
 
-const cover = (b: BrandForPdf, kicker: string, title: string, subtitle: string, meta: [string, string][]) => `
+export const cover = (b: BrandForPdf, kicker: string, title: string, subtitle: string, meta: [string, string][]) => `
 <section class="cover">
   <div class="band"></div>
   <div>${b.logoDataUri ? `<img class="logo" src="${b.logoDataUri}" alt="${esc(b.name)}">` : `<div class="display" style="font-size:20pt;font-weight:700">${esc(b.name)}</div>`}</div>

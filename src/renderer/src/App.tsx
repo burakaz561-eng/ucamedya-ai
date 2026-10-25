@@ -13,6 +13,7 @@ import { Splash } from './pages/Splash'
 import { Wizard } from './pages/Wizard'
 import { CompanyDrawer } from './pages/CompanyDrawer'
 import { SendConfirm, AgentNeedsUser } from './components/SendConfirm'
+import { AssistantLauncher } from './components/AssistantPanel'
 import type { AppSettings } from '@shared/types'
 import type { RobotMood } from './robot/robot-model'
 import logoDark from './assets/uca-medya-logo-dark.svg'
@@ -209,6 +210,7 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
       {company != null && <CompanyDrawer id={company} onClose={() => setCompany(null)} />}
       <RobotNotifier enabled={settings.robotAnimations} />
       <SendConfirm />
+      <AssistantLauncher />
       <AgentNeedsUser />
     </NavCtx.Provider>
   )

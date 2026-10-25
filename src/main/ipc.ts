@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join, extname, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import type { AppServices } from './services/app-services'
+import { EXAMPLES as ASSISTANT_EXAMPLES } from './assistant/assistant'
 import { j } from './database/db'
 import { log } from './logger'
 import { SECRET_NAMES } from './security/secrets'
@@ -469,6 +470,19 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     }).parse(p) as Parameters<AppServices['offers']['save']>[0]),
     'offers:pdf': (p) => s.offers.pdf(id.parse(p?.id)),
     'offers:fromAnalysis': (p) => s.offers.draftFromAnalysis(id.parse(p?.companyId)),
+    // ---------------- Asistan ----------------
+    'assistant:summary': () => ({ summary: s.assistant.summary(), examples: ASSISTANT_EXAMPLES }),
+    'assistant:ask': (p) => s.assistant.ask(str(500).min(1).parse(p?.question), { companyId: id.optional().parse(p?.companyId) }),
+    'assistant:createTasks': (p) => {
+      const n = s.assistant.createTasks(z.array(id).max(200).parse(p?.companyIds), str(120).min(2).parse(p?.title))
+      s.emit('data-changed', { scope: 'tasks' })
+      return n
+    },
+    'concepts:create': async (p) => {
+      const r = await s.concepts.create(id.parse(p?.companyId))
+      s.emit('data-changed', { scope: 'files' })
+      return r
+    },
     'offers:delete': (p) => s.db.run("DELETE FROM offers WHERE id = ? AND status = 'draft'", id.parse(p?.id)),
     'tasks:list': (p) => s.offers.listTasks(p ?? {}),
     'tasks:save': (p) => s.offers.saveTask(z.object({ id: id.optional(), title: str(200), description: optStr(4000), companyId: id.nullable().optional(), offerId: id.nullable().optional(), assignee: optStr(80), dueAt: optStr(30), remindAt: optStr(30), priority: optStr(10), status: optStr(20), kind: optStr(40) }).parse(p) as Parameters<AppServices['offers']['saveTask']>[0]),

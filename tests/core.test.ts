@@ -583,3 +583,61 @@ describe('0.3 satış analitiği', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+describe('0.3 tasarım konsepti', () => {
+  it('sitenin başlıklarını kart yapar, bilinmeyeni uydurmaz, mobil bulguları öneriye çevirir', async () => {
+    const { buildConcept } = await import('../src/main/concepts/concept')
+    const { conceptHtml } = await import('../src/main/concepts/concept-template')
+    const d = buildConcept({
+      company: { name: 'RAMADİ YAPI İNŞAAT | Gebze Fabrika Tadilatı', sector: 'İnşaat', city: 'Kocaeli', website: 'https://ramadi.com.tr' },
+      title: 'Anasayfa', metaDescription: null, h1: [], headings: [{ level: 2, text: 'Fabrika Tadilatı' }, { level: 2, text: 'Kentsel Dönüşüm' }, { level: 2, text: 'İletişim' }, { level: 3, text: 'Çelik Konstrüksiyon' }],
+      fontFamilies: 5, textColors: 11, hasViewport: false, hamburger: false,
+      contacts: { phone: '0262 000 00 00', whatsapp: null, email: 'info@ramadi.com.tr' },
+      findings: [{ code: 'mobile_no_viewport', title: 'Mobil ölçekleme etiketi eksik', severity: 'high', recommendation: 'viewport eklenmeli', category: 'mobile' }]
+    })
+    expect(d.brandName).toBe('RAMADİ YAPI İNŞAAT')
+    expect(d.services.map((s) => s.title)).toEqual(['Fabrika Tadilatı', 'Kentsel Dönüşüm', 'Çelik Konstrüksiyon'])
+    expect(d.services.every((s) => s.fromSite)).toBe(true)
+    expect(d.hero.sublineFromSite).toBe(false)
+    expect(d.hero.subline).toMatch(/^\[/)
+    expect(d.ctas.find((c) => c.label.startsWith('WhatsApp'))!.available).toBe(false)
+    expect(d.mobile[0]).toMatch(/viewport/)
+    expect(d.palette.primary).toBe('#1F3A5F')
+    expect(JSON.stringify(d)).not.toMatch(/\d+ yıl|ödül|müşteri sayısı/i)
+    const html = conceptHtml({ name: 'Uca Medya', website: 'ucamedya.com.tr', email: '', phone: '', address: '', logoDataUri: null, fontCss: '' } as any, d, { company: { name: 'RAMADİ', website: null }, date: '25 Ekim 2026', before: { desktop: null, mobile: null } })
+    expect(html).toContain('Tasarım İyileştirme Konsepti')
+    expect(html).not.toContain('<script')
+  })
+})
+
+describe('0.3 asistan', () => {
+  it('soruları kayıtlardan yanıtlar; gönderme/silme yapmaz; görev oluşturma tekrarsız', async () => {
+    const { Assistant } = await import('../src/main/assistant/assistant')
+    const dir = mkdtempSync(join(tmpdir(), 'uca-asst-'))
+    const db = new Db(join(dir, 'a.sqlite'))
+    db.migrate()
+    const cs = new CompanyService(db, new FileStore(db, () => join(dir, 'data')))
+    const a = cs.create({ name: 'EmlaXo Türkiye', city: 'Kocaeli', source: 'google_browser' } as any)
+    const b = cs.create({ name: 'Mavi Yapı', source: 'google_browser' } as any)
+    db.run(`UPDATE companies SET potential_services = '["redesign","technical_seo"]', opportunity_score = 78, stage_key = 'review' WHERE id = ?`, a)
+    db.run(`UPDATE companies SET potential_services = '["technical_seo"]', opportunity_score = 50, stage_key = 'meeting' WHERE id = ?`, b)
+    db.run("INSERT INTO tasks(title, company_id, due_at, status) VALUES ('Eski görev', ?, '2020-01-01T09:00:00Z', 'open')", a)
+    const as = new Assistant(db, () => null)
+    const ids = async (q: string) => ((await as.ask(q)).items ?? []).map((i) => i.companyId)
+    expect(await ids('Bu hafta web tasarım hizmetiyle en çok eşleşen şirketleri göster')).toEqual([a])
+    expect(await ids('SEO için uygun şirketler hangileri')).toEqual([a, b])
+    expect(await ids('İncelenmemiş müşteri kayıtlarını listele')).toContain(a)
+    const offer = await as.ask('Teklif hazırlamam gereken müşterileri göster')
+    expect(offer.items?.map((i) => i.companyId)).toEqual([b])
+    expect(offer.actions?.[0]).toMatchObject({ kind: 'create_tasks', companyIds: [b] })
+    expect((await as.ask('Bugün neler yapmalıyım?')).text).toMatch(/1 geciken/)
+    expect((await as.ask('Mavi Yapı firmasına mesaj gönder')).text).toMatch(/yapmıyorum/)
+    expect((await as.ask('EmlaXo analiz raporunu aç')).text).toMatch(/tamamlanmış bir analiz yok/)
+    expect((await as.ask('kuantum fiziği nedir')).source).toBe('help')
+    expect(as.createTasks([b], 'Teklif hazırla')).toBe(1)
+    expect(as.createTasks([b], 'Teklif hazırla')).toBe(0)
+    expect(as.summary().items?.length).toBeGreaterThan(0)
+    ;(db.raw as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
