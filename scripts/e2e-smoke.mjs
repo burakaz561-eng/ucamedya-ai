@@ -25,9 +25,11 @@ mkdirSync(docs, { recursive: true })
 const SITE = process.env.E2E_SITE ?? 'https://ucamedya.com.tr/'
 
 let failures = 0
+let currentStep = ''
 const results = []
 const step = async (name, fn) => {
   const t = Date.now()
+  currentStep = name
   try {
     await fn()
     results.push(`✓ ${name} (${((Date.now() - t) / 1000).toFixed(1)} sn)`)
@@ -47,7 +49,7 @@ const app = await electron.launch({
 })
 const page = await app.firstWindow()
 const errors = []
-page.on('pageerror', (e) => errors.push(e.message))
+page.on('pageerror', (e) => { errors.push(`[${currentStep}] ${e.message}`); if (process.env.E2E_STACK) console.error(`PAGEERROR [${currentStep}] ${e.stack}`) })
 await page.setViewportSize({ width: 1440, height: 900 }).catch(() => undefined)
 // Test penceresi masaüstünde küçültülürse Windows çizimi durdurur; ekran görüntüsünden önce geri getirilir
 const ensureShown = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach((w) => { if (w.isMinimized()) w.restore() })).catch(() => undefined)
@@ -108,12 +110,12 @@ await step('sihirbaz: veri klasörü ve test modu, adımları geç', async () =>
 })
 
 const pages = [
-  ['Canlı Kontrol Merkezi', 'control'], ['AI Müşteri Bulucu', 'finder'], ['Sektör Araştırması', 'research'], ['Web Sitesi Analizi', 'analysis'], ['Müşteri Havuzu', 'companies'],
+  ['Canlı Kontrol Merkezi', 'control'], ['AI Müşteri Bulucu', 'finder'], ['Sektör Araştırması', 'research'], ['Web Sitesi Analizi', 'analysis'], ['Müşteri Havuzu', 'companies'], ['Satış Panosu', 'pipeline'], ['Web Sitesi Talepleri', 'leads'],
   ['İletişim Merkezi', 'communication'], ['E-posta Kampanyaları', 'email'], ['WhatsApp İşlemleri', 'whatsapp'], ['AI Mesaj Stüdyosu', 'studio'],
   ['Teklif ve Satış', 'offers'], ['Takip Planlayıcısı', 'followup'], ['Raporlar ve Analitik', 'reports'], ['Dosya Merkezi', 'files'],
   ['Entegrasyonlar', 'integrations'], ['Görevler ve Otomasyonlar', 'automations'], ['Uygulama Ayarları', 'settings']
 ]
-await step('16 menü ekranının tamamı açılıyor (boş veriyle)', async () => {
+await step('18 menü ekranının tamamı açılıyor (boş veriyle)', async () => {
   for (const [label, key] of pages) {
     await ensureShown()
   await page.locator('.nav-item', { hasText: label }).click()
@@ -213,6 +215,64 @@ await step('teklif: KDV/indirim hesabı + PDF', async () => {
   await page.locator('.nav-item', { hasText: 'Teklif ve Satış' }).click()
   await page.waitForTimeout(1000)
   await shot('09-teklifler')
+})
+
+await step('analizden teklif taslağı (fiyatsız kalemle gönderilemez) + PDF', async () => {
+  const id = await page.evaluate((cid) => window.api.invoke('offers:fromAnalysis', { companyId: cid }).catch((e) => e.message), companyId)
+  if (typeof id === 'string') {
+    if (!/önerilen bir hizmet yok/.test(id)) throw new Error(id)
+    console.log('   analizde önerilen hizmet yok → taslak oluşturulmadı (beklenen davranış)')
+    return
+  }
+  const o = await inv('offers:get', { id })
+  if (o.origin !== 'analysis' || o.status !== 'draft' || !o.items.length) throw new Error(JSON.stringify({ origin: o.origin, status: o.status, n: o.items.length }))
+  const items = o.items.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: 0, vatRate: i.vat_rate }))
+  const sent = await page.evaluate(([oid, cid, it]) => window.api.invoke('offers:save', { id: oid, companyId: cid, title: 'x', status: 'sent', items: it }).then(() => 'kaydedildi', (e) => e.message), [id, companyId, items])
+  if (!/Fiyatı girilmemiş/.test(sent)) throw new Error('Fiyatsız teklif gönderildi yapılabildi: ' + sent)
+  const pdf = await inv('offers:pdf', { id })
+  console.log(`   ${o.items.length} kalem: ${o.items.map((i) => i.name).join(', ')} · PDF: ${pdf}`)
+})
+
+await step('tasarım konsepti sunumu (PDF)', async () => {
+  const r = await inv('concepts:create', { companyId })
+  const { statSync } = await import('node:fs')
+  const kb = Math.round(statSync(r.pdf).size / 1024)
+  if (kb < 30) throw new Error(`PDF çok küçük: ${kb} KB`)
+  console.log(`   ${r.pdf} (${kb} KB)`)
+})
+
+await step('satış panosu: kartı sürükle-bırak → aşama + geçmiş', async () => {
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'Satış Panosu' }).click()
+  const card = page.locator('.kanban-card', { hasText: 'UcaMedya (test kaydı)' }).first()
+  await card.waitFor({ timeout: 15000 })
+  const target = page.locator('.kanban-col', { has: page.locator('.kanban-head', { hasText: 'Görüşme planlandı' }) })
+  await card.dragTo(target)
+  await page.waitForTimeout(1200)
+  const c = await inv('companies:get', { id: companyId })
+  if (c.stage_key !== 'meeting') throw new Error(`Aşama değişmedi: ${c.stage_key}`)
+  if (!c.stageHistory.some((h) => h.to_key === 'meeting')) throw new Error('Aşama geçmişine yazılmadı')
+  if (!(await target.locator('.kanban-card', { hasText: 'UcaMedya (test kaydı)' }).count())) throw new Error('Kart arayüzde hedef sütunda görünmüyor')
+  await shot('09b-satis-panosu')
+})
+
+await step('asistan: özet ve soru-cevap', async () => {
+  const r = await inv('assistant:ask', { question: 'Teklif hazırlamam gereken müşterileri göster' })
+  if (r.source !== 'data') throw new Error(JSON.stringify(r).slice(0, 200))
+  await ensureShown()
+  await page.locator('.assistant-fab').click()
+  await page.locator('.assistant-input input').fill('İncelenmemiş müşteri kayıtlarını listele')
+  await page.locator('.assistant-input button[type=submit]').click()
+  await page.locator('.am.uca').nth(1).waitFor({ timeout: 10000 })
+  await shot('09c-asistan')
+  await page.getByRole('button', { name: 'Kapat' }).last().click()
+})
+
+await step('satış analitiği: veri yok ayrımı', async () => {
+  const m = await inv('reports:metrics', {})
+  const by = Object.fromEntries(m.metrics.map((x) => [x.key, x.value]))
+  if (by.found < 1 || by.analyzed < 1) throw new Error(JSON.stringify(by))
+  if (by.web_leads !== null) throw new Error('Web sitesi bağlantısı yokken talep sayısı veri yok olmalı')
 })
 
 await step('görev + hatırlatıcı kaydı', async () => {

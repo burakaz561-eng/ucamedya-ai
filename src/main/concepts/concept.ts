@@ -63,21 +63,36 @@ const MOBILE_TIPS: Record<string, string> = {
 
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim()
 
+/** Hizmet adı gibi görünen başlık (referans/müşteri adlarını ve cümleleri elemek için) */
+const SERVICE_HINT = /(hizmet|tasarim|cozum|uygulama|danismanlik|bakim|kurulum|uretim|satis|servis|onarim|tadilat|insaat|proje|yonetim|egitim|tedavi|muayene|montaj|imalat|tamir|temizlik|nakliye|kiralama|organizasyon|cekim|reklam|yazilim|seo|e-?ticaret|kimlik|marka|dekorasyon|renovasyon|donusum|yalitim|tesisat|peyzaj|guvenlik|sigorta|muhasebe|hukuk|danisma|analiz|optimizasyon|entegrasyon|destek|konstruksiyon|beton|cati|boya|mobilya|prefabrik|iskele|zemin|cephe)/
+
+/** Türkçe bulunma eki: İstanbul'da, İzmir'de, Kocaeli'de, Bursa'da, Tokat'ta, Muş'ta */
+export function locative(word: string): string {
+  const w = word.trim()
+  const vowels = w.toLocaleLowerCase('tr-TR').match(/[aeıioöuü]/g)
+  const last = vowels ? vowels[vowels.length - 1] : 'e'
+  const back = 'aıou'.includes(last)
+  const hard = /[çfhkpsşt]$/i.test(w)
+  return `${w}'${hard ? 't' : 'd'}${back ? 'a' : 'e'}`
+}
+
 export function buildConcept(i: ConceptInput): ConceptData {
   const brand = shortCompanyName(i.company.name)
-  const sec = i.company.sector ? clean(i.company.sector) : ''
+  // "Diğer" / "Belirtilmemiş" gibi değerler sektör bilgisi sayılmaz
+  const rawSec = i.company.sector ? clean(i.company.sector) : ''
+  const sec = /^(diger|belirtilmemis|genel|other|-)$/.test(fold(rawSec)) ? '' : rawSec
   const pal = PALETTES.find((x) => x.re.test(fold(sec))) ?? DEFAULT_PALETTE
   const sectorLabel = sec ? sec.toLocaleLowerCase('tr-TR') : 'sektörünüz'
 
   const headlines = [
     `${brand}: ${sec ? `${sectorLabel} alanında` : ''} [işinizi tek cümlede anlatan net vaat]`.replace(/\s+/g, ' '),
-    `${i.company.city ? `${clean(i.company.city)}'de ` : ''}${sec ? `${sectorLabel} için ` : ''}doğru adres: ${brand}`,
+    sec || i.company.city ? `${i.company.city ? `${locative(clean(i.company.city))} ` : ''}${sec ? `${sectorLabel} için ` : ''}doğru adres: ${brand}` : `${brand}: [hizmetinizi ve farkınızı anlatan kısa başlık]`,
     `[Müşterinizin en sık sorduğu soruya yanıt veren başlık] — ${brand}`
   ]
   const meta = i.metaDescription ? clean(i.metaDescription) : ''
   const hero = { headlines, subline: meta.length >= 40 ? meta : '[Hizmetlerinizi ve sizi rakiplerinizden ayıran özelliği anlatan 1–2 cümle — müşteriyle netleştirilir]', sublineFromSite: meta.length >= 40 }
 
-  const siteCards = [...new Set(i.headings.filter((h) => h.level >= 2 && h.level <= 3).map((h) => clean(h.text)).filter((t) => t.length >= 4 && t.length <= 42 && !GENERIC.test(fold(t)) && !/\d{4}/.test(t)))].slice(0, 4)
+  const siteCards = [...new Set(i.headings.filter((h) => h.level >= 2 && h.level <= 3).map((h) => clean(h.text)).filter((t) => t.length >= 4 && t.length <= 42 && !GENERIC.test(fold(t)) && !/\d{4}/.test(t) && !/[.!?]$/.test(t) && SERVICE_HINT.test(fold(t))))].slice(0, 4)
   const services = siteCards.length >= 2
     ? siteCards.map((t) => ({ title: t, text: '[Bu hizmetin müşteriye faydasını anlatan kısa açıklama]', fromSite: true }))
     : pal.cards.map((t) => ({ title: t, text: '[Kısa açıklama — örnek kart, şirketin gerçek hizmetleriyle değiştirilir]', fromSite: false }))

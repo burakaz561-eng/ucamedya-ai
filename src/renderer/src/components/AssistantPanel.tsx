@@ -40,7 +40,10 @@ function AssistantPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     call<{ summary: Reply; examples: string[] }>('assistant:summary').then((r) => { setMsgs([{ who: 'uca', reply: r.summary }]); setExamples(r.examples) }).catch(() => undefined)
   }, [])
-  useEffect(() => end.current?.scrollIntoView({ behavior: 'smooth' }), [msgs])
+  // Gövdeli yazılır: yeni Chromium'da scrollIntoView Promise döndürür, efekt temizliği sanılmamalı
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs])
 
   const send = async (text: string) => {
     const t = text.trim()

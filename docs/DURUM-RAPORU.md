@@ -2,6 +2,32 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.0 — Ek geliştirme paketi (2026-10-25)
+
+Plan ve modül-dosya eşlemesi: `docs/GELISTIRME-0.3-PLANI.md`. Web sitesi kurulumu: `docs/WEB-SITESI-ENTEGRASYONU.md`.
+
+| Modül | Durum |
+|---|---|
+| 1. Fırsat puanı — grup adları istenen 5 gruba uyarlandı (Öncelikli fırsat / Yüksek hizmet uyumu / Ek inceleme gerekli / Düşük öncelik / İletişim için uygun değil + ayrıca "daha önce iletişim kurulmuş", "iletişim istemiyor"); ağırlıklar Ayarlar'da | ✅ (puanlama 0.1'den beri çalışıyor) |
+| 2. Tasarım konsepti — örnek ana sayfa, başlık önerileri, hizmet kartları, iletişim butonları, mobil yerleşim, renk/tipografi, önce/sonra; PDF şirket klasörüne | ✅ birim + e2e (gerçek analizden PDF üretildi, görsel kontrol edildi). Şirket logosu/görselleri konsepte konmaz; bilinmeyen bilgi [köşeli parantez] ile bırakılır |
+| 3. CRM — emin olunmayan eşleşmeler için onay kuyruğu ("Farklı şirketler" / birleştir), son görülme, iletişim tercihi, sonraki görev, web sitesi talepleri ve aşama geçmişi kartta | ✅ birim + e2e |
+| 4. Satış Panosu — sürükle-bırak, 17 aşama ("Yanıt geldi" eklendi), aşama geçmişi (tetikleyici: her değişiklik tarihle kaydedilir), "İletişim istemiyor"a bırakınca onay + ret listesi | ✅ e2e (sürükle-bırak gerçek arayüzde) |
+| 5. Web sitesi entegrasyonu — WordPress eklentisi + anahtarlı güvenli çekme, eşleştirme, bildirim, görev | ✅ yerel WordPress'te uçtan uca · 🟡 canlı sitede kurulmadı |
+| 6. Teklif formu — 8 hizmet, hizmete göre değişen kısa sorular, bütçe/teslim isteğe bağlı ("Belirtmek istemiyorum") | ✅ yerel WordPress |
+| 7. Ücretsiz ön analiz — erişim, HTTPS, yanıt süresi, başlık/meta, mobil ayarı, H1, SEO etiketleri, görsel boyutu/alt, iletişim kolaylığı; SSRF koruması | ✅ yerel WordPress (11 engel testi + example.com) |
+| 8. Analizden teklif taslağı — önerilen hizmetler katalogdan, analiz özeti, sonraki adımlar; fiyatı girilmemiş kalemle "gönderildi" yapılamaz, PDF'te TASLAK uyarısı | ✅ birim + e2e |
+| 9. Görevler — ana panelde bugün / geciken, olası eşleşme ve yeni talep kısayolları | ✅ |
+| 10. Satış analitiği — 13 metrik, "veri yok" ile 0 ayrımı, tahminî / gerçekleşen gelir ayrı, hizmet/kaynak/sektör dağılımı, dönem filtresi | ✅ birim + e2e |
+| 11. Uca asistanı — günlük özet, 9 soru türü kayıtlardan yanıtlanır; gönderme/silme yapmaz; görev oluşturma onayla; yapay zekâ açıksa bilinmeyen sorular özet veriyle | ✅ birim + e2e · 🟡 yapay zekâ yanıtı gerçek anahtarla denenmedi |
+| 12. Güvenlik — migration öncesi otomatik tam yedek (geri dönüş noktası), yeni modüller ayrı dosyalarda | ✅ kullanıcı veritabanında: v2→v3, yedek alındı, kayıt sayıları aynı |
+
+Testler: 60 birim testi, 27 adımlı uçtan uca test (paketli uygulamada), canlı web sitesi talebi testi (`tests/live-website-leads.test.ts`), eklenti testi (`tests/.tmp/wp-plugin-test.mjs`).
+
+Bilinen sınırlar:
+- macOS paketi hâlâ bir Mac'te derlenmeli; Mac'te hiç çalıştırılmadı.
+- Eklenti WordPress Playground'da test edildi; Playground DNS'i her alanı sahte özel IP'ye çözdüğü için dış site analizi testinde yalnızca test kopyasında bu IP'ye izin verildi (kaynak koddaki koruma değişmedi).
+- Masaüstü uygulaması kapalıyken talepler sitede bekler; uygulama açılınca çekilir (bildirim e-postası ayarlanabilir).
+
 ## 0.2.4 — Firmanın yayımladığı Gmail adresleri engellenmiyor
 
 - Ücretsiz e-posta (gmail, hotmail vb.) firmanın kendi sitesinde veya Google işletme kaydında yayımlanmışsa firmanın iş adresi (kurumsal) sayılır. CSV ya da elle eklenen ücretsiz adresler kişisel kalır. Veritabanı şeması 2: mevcut kayıtlar da düzeltildi. ✅ birim testi + kullanıcının veritabanında doğrulandı (emlaxogayrimenkul@gmail.com → kurumsal).

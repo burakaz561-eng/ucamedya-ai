@@ -59,7 +59,8 @@ export default function Pipeline(_: PageProps) {
       if (!ok) return
     }
     setMoved((m) => ({ ...m, [id]: stage }))
-    const r = await run(() => call('companies:update', { id, patch: { stage_key: stage } }), `${card.name} → ${st?.label ?? stage}`)
+    // companies:update değer döndürmez; başarıyı ayırt etmek için true döndürülür (run hata olursa undefined verir)
+    const r = await run(() => call('companies:update', { id, patch: { stage_key: stage } }).then(() => true), `${card.name} → ${st?.label ?? stage}`)
     if (r === undefined) setMoved((m) => { const n = { ...m }; delete n[id]; return n })
     else reload()
   }

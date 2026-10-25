@@ -17,7 +17,7 @@ describe.skipIf(!URL_ || !KEY)('canlı: web sitesi talepleri', () => {
   // WordPress Playground çerezsiz her isteği otomatik oturum açmaya yönlendirir (gerçek sitede olmaz)
   if (process.env.WP_PLAYGROUND) {
     const f = globalThis.fetch
-    globalThis.fetch = ((u: RequestInfo | URL, init: RequestInit = {}) => f(u, { ...init, headers: { ...(init.headers as Record<string, string>), Cookie: 'playground_auto_login_already_happened=1' } })) as typeof fetch
+    globalThis.fetch = ((u: string | URL | Request, init: RequestInit = {}) => f(u, { ...init, headers: { ...(init.headers as Record<string, string>), Cookie: 'playground_auto_login_already_happened=1' } })) as typeof fetch
   }
   it('talepleri çeker, eşleştirir, onaylar; ikinci çekişte tekrar gelmez', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'uca-live-leads-'))
