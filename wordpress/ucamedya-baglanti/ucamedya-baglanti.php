@@ -2,7 +2,7 @@
 /**
  * Plugin Name: UcaMedya Bağlantı — Teklif Formu, Ön Analiz ve Masaüstü Entegrasyonu
  * Description: Hizmete göre soru değiştiren kısa teklif formu ([ucamedya_teklif_formu]), ücretsiz web sitesi ön analiz aracı ([ucamedya_on_analiz]) ve gelen talepleri UcaMedya AI masaüstü uygulamasına güvenli aktaran bağlantı.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: UcaMedya
@@ -12,13 +12,14 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('UCA_BAG_VERSION', '1.0.0');
+define('UCA_BAG_VERSION', '1.1.0');
 define('UCA_BAG_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/services.php';
 require_once __DIR__ . '/includes/store.php';
 require_once __DIR__ . '/includes/safe-fetch.php';
 require_once __DIR__ . '/includes/audit.php';
+require_once __DIR__ . '/includes/theme-messages.php';
 require_once __DIR__ . '/includes/forms.php';
 require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/admin.php';
@@ -47,6 +48,7 @@ function uca_bag_settings() {
         'notify_email'    => get_option('admin_email'),
         'retention_days'  => 30,      // uygulamaya aktarılan talepler bu süre sonra siteden silinir
         'audit_per_hour'  => 6,       // aynı ziyaretçi saatte en fazla bu kadar ön analiz yapabilir
+        'import_theme_messages' => 1, // UCA Medya temasının "Gelen Mesajlar"ını da uygulamaya aktar
         'success_message' => 'Talebiniz bize ulaştı. En kısa sürede sizinle iletişime geçeceğiz.',
     );
     $s = get_option('uca_bag_settings', array());

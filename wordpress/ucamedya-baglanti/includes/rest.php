@@ -77,7 +77,9 @@ add_action('rest_api_init', function () {
         'callback' => function () {
             global $wpdb;
             $t = uca_bag_table();
-            return array('ok' => true, 'site' => get_bloginfo('name'), 'url' => home_url('/'), 'plugin' => UCA_BAG_VERSION, 'pending' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$t} WHERE synced_at IS NULL"));
+            $form = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$t} WHERE synced_at IS NULL");
+            $theme = uca_bag_theme_pending_count();
+            return array('ok' => true, 'site' => get_bloginfo('name'), 'url' => home_url('/'), 'plugin' => UCA_BAG_VERSION, 'pending' => $form + $theme, 'pending_form' => $form, 'pending_theme' => $theme, 'theme_messages' => uca_bag_theme_enabled());
         },
     ));
 
@@ -88,10 +90,13 @@ add_action('rest_api_init', function () {
             $t = uca_bag_table();
             $limit = max(1, min(100, (int) ($r->get_param('limit') ?: 50)));
             $rows = $wpdb->get_results($wpdb->prepare("SELECT id, kind, data, created_at FROM {$t} WHERE synced_at IS NULL ORDER BY id ASC LIMIT %d", $limit), ARRAY_A);
-            return array('items' => array_map(function ($row) {
+            $items = array_map(function ($row) {
                 $d = json_decode($row['data'], true) ?: array();
-                return array('id' => (int) $row['id'], 'kind' => $row['kind'], 'created_at' => $row['created_at']) + $d;
-            }, $rows ?: array()));
+                return array('id' => (int) $row['id'], 'source' => 'plugin', 'kind' => $row['kind'], 'created_at' => $row['created_at']) + $d;
+            }, $rows ?: array());
+            // Temanın "Gelen Mesajlar"ı (iletişim formu, talebe çevrilen sohbetler)
+            $items = array_merge($items, uca_bag_theme_items($limit - count($items)));
+            return array('items' => $items);
         },
     ));
 
@@ -99,12 +104,14 @@ add_action('rest_api_init', function () {
         'methods' => 'POST', 'permission_callback' => $auth,
         'callback' => function (WP_REST_Request $r) {
             global $wpdb;
-            $ids = array_filter(array_map('absint', (array) ($r->get_json_params()['ids'] ?? array())));
-            if (!$ids) return array('acked' => 0);
+            $p = $r->get_json_params() ?: array();
+            $ids = array_filter(array_map('absint', (array) ($p['ids'] ?? array())));
+            $theme = uca_bag_theme_ack((array) ($p['theme_ids'] ?? array()));
+            if (!$ids) return array('acked' => $theme);
             $t = uca_bag_table();
             $in = implode(',', array_fill(0, count($ids), '%d'));
             $n = $wpdb->query($wpdb->prepare("UPDATE {$t} SET synced_at = %s WHERE synced_at IS NULL AND id IN ({$in})", array_merge(array(current_time('mysql', true)), $ids)));
-            return array('acked' => (int) $n);
+            return array('acked' => (int) $n + $theme);
         },
     ));
 });

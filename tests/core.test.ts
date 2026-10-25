@@ -526,6 +526,15 @@ describe('0.3 web sitesi talepleri (eşleştirme ve içe aktarma)', () => {
     expect(db.get<{ stage_key: string; source: string }>('SELECT stage_key, source FROM companies WHERE id = ?', r.companyId)).toMatchObject({ stage_key: 'review', source: 'website' })
     expect(cs.pendingMatchCount()).toBe(1)
   })
+  it('temanın Gelen Mesajlar kaydı: ayrı kimlikle, iletişim formu olarak, yalnızca talebe yanıt izniyle', () => {
+    const r = leads.importItem('https://ucamedya.com.tr/', { id: 1, source: 'theme', kind: 'contact', service_label: 'Web Tasarım, SEO', person_name: 'Zeynep Kaya', email: 'zeynep@kayamimarlik.com', phone: '0533 444 55 66', message: 'Yeni site', consent: { kvkk: false, form: 'theme' } })
+    expect(r.created).toBe(true)
+    // eklentinin kendi formundaki #1 ile çakışmaz
+    expect(leads.importItem('https://ucamedya.com.tr/', item({ id: 1 })).duplicate).toBe(false)
+    const row = db.get<{ kind: string; external_id: string }>("SELECT kind, external_id FROM inbound_requests WHERE external_id LIKE 'theme-%'")
+    expect(row).toEqual({ kind: 'contact', external_id: 'theme-1' })
+    expect(db.get<{ status: string; purpose: string }>("SELECT status, purpose FROM outreach_permissions WHERE company_id = ? AND channel = 'email'", r.companyId)).toMatchObject({ status: 'opt_in', purpose: expect.stringMatching(/Yalnızca talebe yanıt/) })
+  })
   it('ret listesindeki şirketin izni opt_in\'e çevrilmez', () => {
     const a = cs.create({ name: 'EmlaXo', website: 'https://emlaxo.com', source: 'manual' } as any)
     db.run("INSERT INTO outreach_permissions(company_id, channel, status) VALUES (?, 'email', 'opted_out')", a)

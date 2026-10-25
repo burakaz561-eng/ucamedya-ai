@@ -17,6 +17,7 @@ add_action('admin_post_uca_bag_save', function () {
             'notify_email'    => sanitize_email($p['notify_email'] ?? ''),
             'retention_days'  => max(1, min(365, (int) ($p['retention_days'] ?? 30))),
             'audit_per_hour'  => max(1, min(100, (int) ($p['audit_per_hour'] ?? 6))),
+            'import_theme_messages' => !empty($p['import_theme_messages']) ? 1 : 0,
             'success_message' => sanitize_text_field($p['success_message'] ?? ''),
         ), false);
     }
@@ -41,7 +42,7 @@ function uca_bag_admin_page() {
             <tr><th>Site adresi</th><td><code><?php echo esc_html(home_url('/')); ?></code></td></tr>
             <tr><th>Bağlantı anahtarı</th><td><input type="text" readonly class="regular-text code" value="<?php echo esc_attr(get_option('uca_bag_key')); ?>" onclick="this.select()" style="width:32em">
                 <p class="description">Bu anahtarı kimseyle paylaşmayın. Sızdığını düşünüyorsanız yenileyin ve uygulamaya yenisini girin.</p></td></tr>
-            <tr><th>Uygulamaya aktarılmayı bekleyen</th><td><?php echo (int) $pending; ?> talep</td></tr>
+            <tr><th>Uygulamaya aktarılmayı bekleyen</th><td><?php echo (int) $pending; ?> form talebi<?php if (uca_bag_theme_enabled()) echo ' + ' . (int) uca_bag_theme_pending_count() . ' tema mesajı (Gelen Mesajlar)'; ?></td></tr>
         </table>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('uca_bag_save'); ?><input type="hidden" name="action" value="uca_bag_save"><input type="hidden" name="regen" value="1">
@@ -52,6 +53,7 @@ function uca_bag_admin_page() {
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
             <?php wp_nonce_field('uca_bag_save'); ?><input type="hidden" name="action" value="uca_bag_save">
             <table class="form-table" role="presentation">
+                <tr><th>Temanın Gelen Mesajları</th><td><label><input type="checkbox" name="import_theme_messages" value="1" <?php checked(!empty($s['import_theme_messages'])); ?>> UCA Medya temasının "Gelen Mesajlar"ını (iletişim formu ve talebe çevrilen canlı destek sohbetleri) uygulamaya aktar</label><p class="description"><?php echo post_type_exists('uca_mesaj') ? 'Tema algılandı. Mesajlar silinmez ve değiştirilmez; yalnızca "aktarıldı" olarak işaretlenir. İlk bağlantıda mevcut mesajlar da aktarılır.' : 'Bu sitede UCA Medya teması etkin değil; bu seçenek bir şey yapmaz.'; ?></p></td></tr>
                 <tr><th><label for="privacy_url">KVKK aydınlatma metni sayfası</label></th><td><input id="privacy_url" name="privacy_url" type="url" class="regular-text" value="<?php echo esc_attr($s['privacy_url']); ?>"><p class="description">Formlardaki onay kutusunda bağlantı olarak gösterilir. Metnin içeriğini hukuk danışmanınızla hazırlayın.</p></td></tr>
                 <tr><th><label for="notify_email">Yeni talep bildirimi e-postası</label></th><td><input id="notify_email" name="notify_email" type="email" class="regular-text" value="<?php echo esc_attr($s['notify_email']); ?>"><p class="description">Boş bırakılırsa e-posta gönderilmez.</p></td></tr>
                 <tr><th><label for="retention_days">Siteden silme süresi (gün)</label></th><td><input id="retention_days" name="retention_days" type="number" min="1" max="365" value="<?php echo (int) $s['retention_days']; ?>"><p class="description">Uygulamaya aktarılan talepler bu süre sonunda WordPress veritabanından silinir (veri azaltma).</p></td></tr>

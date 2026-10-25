@@ -15,6 +15,8 @@ import { emailKey, FREE_MAIL } from '@shared/text'
 
 export interface LeadItem {
   id: number
+  /** plugin: eklentinin kendi formu/ön analiz · theme: temanın "Gelen Mesajlar"ı */
+  source?: 'plugin' | 'theme'
   kind: string
   created_at?: string
   submitted_at?: string
@@ -134,16 +136,17 @@ export class WebsiteLeads {
         if (!r.items?.length) break
         fetched += r.items.length
         const ack: number[] = []
+        const themeAck: number[] = []
         for (const it of r.items) {
           const res = this.db.tx(() => this.importItem(site, it))
-          ack.push(it.id)
+          ;(it.source === 'theme' ? themeAck : ack).push(it.id)
           if (res.duplicate) continue
           imported++
           if (res.created) created++
           else matched++
           items.push({ companyId: res.companyId, title: `${it.service_label ?? 'Talep'} — ${it.company_name || it.person_name || ''}` })
         }
-        await this.call('requests/ack', { method: 'POST', body: { ids: ack } })
+        await this.call('requests/ack', { method: 'POST', body: { ids: ack, theme_ids: themeAck } })
         if (r.items.length < 50) break
       }
       this.settings.setValue('website_leads_last_sync', new Date().toISOString())
@@ -157,7 +160,7 @@ export class WebsiteLeads {
 
   /** Tek bir talebi kaydeder ve müşteri kartıyla eşleştirir (aynı talep ikinci kez gelirse yok sayılır). */
   importItem(site: string, it: LeadItem): ImportResult {
-    const extId = String(it.id)
+    const extId = it.source === 'theme' ? `theme-${it.id}` : String(it.id)
     if (this.db.get('SELECT 1 FROM inbound_requests WHERE site = ? AND external_id = ?', site, extId)) return { inboundId: null, companyId: null, created: false, matchReason: null, duplicate: true }
     const s = (v: unknown, n = 500) => (typeof v === 'string' ? v.trim().slice(0, n) : '')
     const person = s(it.person_name, 120)
@@ -165,7 +168,7 @@ export class WebsiteLeads {
     const email = s(it.email, 160)
     const phone = s(it.phone, 40)
     const website = s(it.website, 300)
-    const kind = it.kind === 'audit' ? 'audit' : 'quote'
+    const kind = it.source === 'theme' ? 'contact' : it.kind === 'audit' ? 'audit' : 'quote'
     const answers = it.answers && typeof it.answers === 'object' ? Object.fromEntries(Object.entries(it.answers).slice(0, 40).map(([k, v]) => [s(k, 120), s(v, 600)])) : {}
     const ins = this.db.run(
       `INSERT INTO inbound_requests(site, external_id, kind, person_name, company_name, email, phone, website, service, answers, message, contact_pref, page_url, consent, submitted_at)
@@ -205,6 +208,14 @@ export class WebsiteLeads {
     if (it.contact_pref) this.db.run('UPDATE companies SET contact_preference = COALESCE(contact_preference, ?) WHERE id = ?', s(it.contact_pref, 20), companyId)
     // İzin kaydı: ziyaretçi talebinin yanıtlanması için açık onay verdi (KVKK kutusu zorunlu). Pazarlama izni ayrı tutulur.
     const consent = (it.consent ?? {}) as { kvkk?: boolean; marketing?: boolean; at?: string; privacy_url?: string }
+    if (it.source === 'theme' && email) {
+      // Sitedeki iletişim formu: kişi iletişim talebini kendisi gönderdi; ayrı onay kutusu yok → yalnızca talebe yanıt
+      this.db.run(
+        `INSERT INTO outreach_permissions(company_id, channel, status, legal_basis, purpose, evidence, recorded_by) VALUES (?, 'email', 'opt_in', ?, ?, ?, 'web formu')
+         ON CONFLICT(company_id, channel) DO NOTHING`,
+        companyId, 'Kişinin kendi iletişim talebi (sitedeki iletişim formu)', 'Yalnızca talebe yanıt — pazarlama izni yok', JSON.stringify({ kaynak: 'tema iletişim formu', sayfa: s(it.page_url, 300), tarih: s(it.submitted_at, 40) })
+      )
+    }
     if (consent.kvkk) {
       const evidence = JSON.stringify({ kaynak: 'web formu', sayfa: s(it.page_url, 300), tarih: consent.at, aydinlatma: consent.privacy_url, pazarlama_izni: !!consent.marketing })
       for (const ch of ['email', 'whatsapp'] as const) {
@@ -219,7 +230,7 @@ export class WebsiteLeads {
       }
     }
     this.db.run('UPDATE inbound_requests SET company_id = ?, match_reason = ? WHERE id = ?', companyId, created ? (uncertain ? `yeni kayıt — olası eşleşme onay bekliyor (${uncertain.reason})` : 'yeni kayıt') : reason, inboundId)
-    const label = kind === 'audit' ? 'Ücretsiz ön analiz sonrası iletişim talebi' : `Teklif talebi: ${s(it.service_label, 80) || 'hizmet belirtilmedi'}`
+    const label = kind === 'contact' ? `İletişim formu mesajı${s(it.service_label, 80) && it.service_label !== 'İletişim formu' ? `: ${s(it.service_label, 80)}` : ''}` : kind === 'audit' ? 'Ücretsiz ön analiz sonrası iletişim talebi' : `Teklif talebi: ${s(it.service_label, 80) || 'hizmet belirtilmedi'}`
     this.db.run("INSERT OR IGNORE INTO communication_events(company_id, channel, direction, kind, summary, body, external_id) VALUES (?, 'website', 'in', 'inbound_request', ?, ?, ?)", companyId, label, s(it.message, 5000) || null, `${site}#${extId}`)
     this.db.run("INSERT INTO tasks(title, description, company_id, due_at, priority, status, kind) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'high', 'open', 'inbound')", `Web sitesi talebini incele: ${s(it.service_label, 80) || 'talep'}`, `${person || ''} ${email || ''} ${phone || ''}`.trim(), companyId)
     this.companies.log(companyId, 'Web sitesinden talep geldi', label, 'system')

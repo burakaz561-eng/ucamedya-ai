@@ -48,7 +48,7 @@ export default function Leads(_: PageProps) {
           <div className="row" style={{ gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 260 }}>
               <div className="row wrap" style={{ gap: 8 }}>
-                <b>{r.kind === 'audit' ? 'Ücretsiz ön analiz → iletişim talebi' : r.service ?? 'Teklif talebi'}</b>
+                <b>{r.kind === 'audit' ? 'Ücretsiz ön analiz → iletişim talebi' : r.kind === 'contact' ? `İletişim formu${r.service && r.service !== 'İletişim formu' ? ` · ${r.service}` : ''}` : r.service ?? 'Teklif talebi'}</b>
                 <Badge tone={STATUS[r.status]?.[1] as never}>{STATUS[r.status]?.[0] ?? r.status}</Badge>
                 <span className="tiny muted">{fmtDate(r.submitted_at ?? r.received_at, true)}</span>
               </div>
@@ -63,7 +63,7 @@ export default function Leads(_: PageProps) {
                 </div>
               )}
               <div className="tiny faint" style={{ marginTop: 6 }}>
-                Onay: aydınlatma metni {r.consent?.kvkk ? 'onaylandı' : 'kaydı yok'} · pazarlama izni {r.consent?.marketing ? 'verildi' : 'verilmedi'}{r.page_url ? ` · sayfa: ${r.page_url}` : ''}
+                {r.kind === 'contact' ? 'Sitedeki iletişim formundan (Gelen Mesajlar) — ayrı onay kutusu kaydı yok; yalnızca talebe yanıt verin.' : `Onay: aydınlatma metni ${r.consent?.kvkk ? 'onaylandı' : 'kaydı yok'} · pazarlama izni ${r.consent?.marketing ? 'verildi' : 'verilmedi'}`}{r.page_url ? ` · sayfa: ${r.page_url}` : ''}
               </div>
               {r.match_reason && <div className="tiny muted">Eşleştirme: {r.match_reason}</div>}
             </div>
@@ -90,7 +90,7 @@ function ConnectionCard({ cfg, onSaved }: { cfg: Config; onSaved: () => void }) 
       <div className="col" style={{ gap: 12, maxWidth: 820 }}>
         <ol className="small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
           <li><b>Eklentiyi indirin</b> ve WordPress yönetim paneli → Eklentiler → Yeni ekle → Eklenti yükle ile <code>ucamedya-baglanti.zip</code> dosyasını yükleyip etkinleştirin.</li>
-          <li>Teklif formu için bir sayfaya <code>[ucamedya_teklif_formu]</code>, ön analiz aracı için <code>[ucamedya_on_analiz]</code> kısa kodunu ekleyin.</li>
+          <li>Sitenizdeki mevcut iletişim formu ve canlı destek talepleri (Gelen Mesajlar) <b>otomatik aktarılır</b>; sitede bir şey değiştirmeniz gerekmez. İsterseniz ek olarak <code>[ucamedya_teklif_formu]</code> ve <code>[ucamedya_on_analiz]</code> kısa kodlarını da kullanabilirsiniz.</li>
           <li>WordPress → Ayarlar → <b>UcaMedya Bağlantı</b> sayfasındaki <b>bağlantı anahtarını</b> kopyalayıp aşağıya yapıştırın. KVKK aydınlatma metni bağlantısını da orada girin.</li>
         </ol>
         <div><Btn icon={<Download />} onClick={() => run(() => call<string | null>('leads:exportPlugin'), (p) => (p ? `Kaydedildi: ${p}` : 'İptal edildi'))}>Eklentiyi indir (ucamedya-baglanti.zip)</Btn></div>

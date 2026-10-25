@@ -1,5 +1,7 @@
 # Web sitesi entegrasyonu — UcaMedya Bağlantı eklentisi
 
+> **1.1 (uygulama 0.3.1):** Eklenti UCA Medya temasının **Gelen Mesajlar**ını da aktarır. Kapsam: sitedeki mevcut iletişim formu ve "talebe çevrilen" canlı destek sohbetleri. Sitede yeni form eklemeniz gerekmez; kısa kodlar isteğe bağlıdır. Tema mesajları silinmez, değiştirilmez, yalnızca "aktarıldı" diye işaretlenir. İlk bağlantıda mevcut mesajlar da aktarılır. Ayar: WordPress → Ayarlar → UcaMedya Bağlantı → "Temanın Gelen Mesajları".
+
 ucamedya.com.tr'deki teklif formu ve ücretsiz ön analiz aracından gelen talepler, UcaMedya AI'daki **Web Sitesi Talepleri** ekranına otomatik düşer.
 
 ## Kurulum (bir kez, ~5 dakika)

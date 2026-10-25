@@ -2,6 +2,10 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.1 — Temanın Gelen Mesajları uygulamaya aktarılır
+
+Kullanıcı mevcut site formunu kullanmaya devam etmek istedi. Eklenti 1.1, UCA Medya temasının `uca_mesaj` kayıtlarını (iletişim formu + talebe çevrilen canlı destek) okur ve aktarıldı olarak işaretler; tema ve mesajlar değişmez. Masaüstünde "İletişim formu" talebi olarak görünür, e-posta için "yalnızca talebe yanıt" izin kaydı oluşur (tema formunda ayrı onay kutusu yok). ✅ Temanın v5.17 kopyasıyla yerel WordPress'te: temanın kendi formu (admin-ajax uca_contact) → eklenti → masaüstü uçtan uca; 61 birim testi. 🟡 Canlı sitede tema v6; mesaj saklama yapısı aynı olmalı, kurulumda "Bağlantıyı test et" bekleyen tema mesajı sayısını gösterir.
+
 ## 0.3.0 — Ek geliştirme paketi (2026-10-25)
 
 Plan ve modül-dosya eşlemesi: `docs/GELISTIRME-0.3-PLANI.md`. Web sitesi kurulumu: `docs/WEB-SITESI-ENTEGRASYONU.md`.

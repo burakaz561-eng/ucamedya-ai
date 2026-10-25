@@ -37,6 +37,12 @@ describe.skipIf(!URL_ || !KEY)('canlı: web sitesi talepleri', () => {
     expect(r.imported).toBeGreaterThan(0)
     const quote = db.get<{ company_id: number; match_reason: string }>("SELECT company_id, match_reason FROM inbound_requests WHERE kind = 'quote' ORDER BY id LIMIT 1")
     expect(quote?.company_id).toBe(existing)
+    if (process.env.WP_THEME) {
+      const c = db.get<{ kind: string; company_id: number; service: string }>("SELECT kind, company_id, service FROM inbound_requests WHERE kind = 'contact' LIMIT 1")
+      expect(c?.service).toBe('Web Tasarım, SEO')
+      expect(db.get<{ status: string }>("SELECT status FROM outreach_permissions WHERE company_id = ? AND channel = 'email'", c!.company_id)?.status).toBe('opt_in')
+      expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM tasks WHERE company_id = ? AND kind = 'inbound'", c!.company_id)!.n).toBe(1)
+    }
     const again = await leads.sync()
     expect(again.fetched).toBe(0)
     expect((await leads.test()).pending).toBe(0)
