@@ -3,11 +3,13 @@
 // Hata mesajları arayüze döner, ancak sır içeren değerler hiçbir zaman döndürülmez.
 
 import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { join, extname, isAbsolute } from 'node:path'
 import { z } from 'zod'
 import type { AppServices } from './services/app-services'
 import { EXAMPLES as ASSISTANT_EXAMPLES } from './assistant/assistant'
+import { imageDataUri, validImage } from './outreach/message-image'
+import { copyImageToClipboard } from './outreach/image-clipboard'
 import { j } from './database/db'
 import { log } from './logger'
 import { SECRET_NAMES } from './security/secrets'
@@ -73,6 +75,30 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
       copyFileSync(f, dest)
       s.settings.update({ brand: { ...s.settings.get().brand, logoPath: dest } })
       return dest
+    },
+    'outreach:pickImage': async () => {
+      const f = await pickFile([{ name: 'Görsel (PNG, JPG)', extensions: ['png', 'jpg', 'jpeg'] }])
+      if (!f) return null
+      if (statSync(f).size > 5 * 1024 * 1024) throw new Error('Görsel 5 MB\'tan büyük olamaz (WhatsApp ve e-posta için küçük tutun).')
+      const dir = join(s.paths.userData, 'brand')
+      mkdirSync(dir, { recursive: true })
+      const dest = join(dir, `mesaj-gorseli-${Date.now()}${extname(f).toLowerCase()}`)
+      copyFileSync(f, dest)
+      const cur = s.settings.get().outreach
+      s.settings.update({ outreach: { ...cur, image: { ...cur.image, path: dest } } })
+      return dest
+    },
+    'outreach:clearImage': () => {
+      const cur = s.settings.get().outreach
+      s.settings.update({ outreach: { ...cur, image: { ...cur.image, path: '' } } })
+      return null
+    },
+    'outreach:imageData': () => imageDataUri(s.settings.get().outreach.image?.path),
+    'outreach:copyImage': async () => {
+      const p = s.settings.get().outreach.image?.path
+      if (!validImage(p)) throw new Error('Kayıtlı mesaj görseli yok')
+      await copyImageToClipboard(p)
+      return true
     },
     'brand:logoData': () => {
       const p = s.settings.get().brand.logoPath

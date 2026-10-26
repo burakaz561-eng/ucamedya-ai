@@ -65,7 +65,7 @@ export class GmailWeb {
   }
 
   /** Yeni e-posta penceresini açar, alıcı/konu/gövdeyi doldurur, isteğe bağlı ek ekler; GÖNDERMEZ. */
-  async prepare(m: { to: string; subject: string; body: string; attachment?: string | null }, company?: string | null): Promise<GmailPrepareResult> {
+  async prepare(m: { to: string; subject: string; body: string; attachment?: string | string[] | null }, company?: string | null): Promise<GmailPrepareResult> {
     return this.agent.run(async () => {
       const page = await this.agent.page('gmail')
       this.agent.touch(page)
@@ -93,9 +93,9 @@ export class GmailWeb {
         if (i) await page.keyboard.press('Enter')
         if (line) await page.keyboard.insertText(line)
       }
-      if (m.attachment) {
-        this.agent.report({ state: 'busy', step: 'Rapor ekleniyor', company })
-        await page.locator(SEL.file).last().setInputFiles(m.attachment).catch(() => undefined)
+      if (m.attachment && (!Array.isArray(m.attachment) || m.attachment.length)) {
+        this.agent.report({ state: 'busy', step: 'Ekler ekleniyor', company })
+        await page.locator(SEL.file).last().setInputFiles(Array.isArray(m.attachment) ? m.attachment : [m.attachment]).catch(() => undefined)
         for (let i = 0; i < 60; i++) {
           if (!(await dialog.locator('[role="progressbar"]').count())) break
           await sleep(500)

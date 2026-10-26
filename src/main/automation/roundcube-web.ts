@@ -68,7 +68,7 @@ export class RoundcubeWeb {
   }
 
   /** Yeni ileti açar, alıcı/konu/gövdeyi doldurur, isteğe bağlı ek yükler; GÖNDERMEZ. */
-  async prepare(m: { to: string; subject: string; body: string; attachment?: string | null }, company?: string | null): Promise<WebmailPrepareResult> {
+  async prepare(m: { to: string; subject: string; body: string; attachment?: string | string[] | null }, company?: string | null): Promise<WebmailPrepareResult> {
     return this.agent.run(async () => {
       let base: string
       try {
@@ -91,9 +91,9 @@ export class RoundcubeWeb {
       await body.fill(m.body)
       const subj = page.locator('#compose-subject')
       if ((await subj.inputValue().catch(() => '')) !== m.subject) await subj.fill(m.subject)
-      if (m.attachment) {
-        this.agent.report({ state: 'busy', step: 'Rapor ekleniyor', company })
-        await page.locator('#uploadformInput, input[type="file"][name="_attachments[]"]').first().setInputFiles(m.attachment).catch(() => undefined)
+      if (m.attachment && (!Array.isArray(m.attachment) || m.attachment.length)) {
+        this.agent.report({ state: 'busy', step: 'Ekler ekleniyor', company })
+        await page.locator('#uploadformInput, input[type="file"][name="_attachments[]"]').first().setInputFiles(Array.isArray(m.attachment) ? m.attachment : [m.attachment]).catch(() => undefined)
         for (let i = 0; i < 60; i++) {
           if (!(await page.evaluate(`!!(window.rcmail && rcmail.busy)`).catch(() => false))) break
           await sleep(500)

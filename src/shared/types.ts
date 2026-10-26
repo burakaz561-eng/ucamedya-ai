@@ -51,6 +51,8 @@ export interface AppSettings {
     webDailyLimitEmail: number
     webDailyLimitWhatsapp: number
     attachReport: boolean
+    /** Mesaja eklenecek görsel (kampanya görseli): e-postada ek, WhatsApp masaüstünde panodan yapıştırma */
+    image: { path: string; email: boolean; whatsapp: boolean }
     templates: { emailSubject: string; emailBody: string; whatsappBody: string }
   }
   backup: { auto: boolean; intervalHours: number; keep: number; dir: string }

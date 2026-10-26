@@ -2,6 +2,18 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.2 — Mesaja görsel ekleme
+
+Ayarlar → Mesaj gönderimi → Mesaj şablonları → **Mesaj görseli** (PNG/JPG, en fazla 5 MB; kanal bazında aç/kapat).
+
+| Kanal | Nasıl | Durum |
+|---|---|---|
+| E-posta (webmail / Gmail / SMTP) | Görsel ek olarak eklenir (PDF raporla birlikte de olabilir) | ✅ kod + birim · 🟡 webmail'de canlı denenmedi (otomasyon tarayıcısında webmail oturumu kapalıydı) |
+| WhatsApp masaüstü uygulaması | Uygulama dışarıdan dosya eklemeye izin vermez: görsel panoya PNG olarak kopyalanır, kullanıcı sohbette Ctrl/Cmd+V ile yapıştırıp gönderir; onay penceresi görseli ve talimatı gösterir | ✅ panoya PNG yazımı e2e ile doğrulandı · 🟡 WhatsApp'ta yapıştırma kullanıcı ekranında denenmedi |
+| WhatsApp Web | Görsel ekleme yok; onay penceresinde belirtilir | ⬜ |
+
+Ayarlar'da "Panoya kopyala (dene)" ile yapıştırma önceden denenebilir.
+
 ## 0.3.1 — Temanın Gelen Mesajları uygulamaya aktarılır
 
 Kullanıcı mevcut site formunu kullanmaya devam etmek istedi. Eklenti 1.1, UCA Medya temasının `uca_mesaj` kayıtlarını (iletişim formu + talebe çevrilen canlı destek) okur ve aktarıldı olarak işaretler; tema ve mesajlar değişmez. Masaüstünde "İletişim formu" talebi olarak görünür, e-posta için "yalnızca talebe yanıt" izin kaydı oluşur (tema formunda ayrı onay kutusu yok). ✅ Temanın v5.17 kopyasıyla yerel WordPress'te: temanın kendi formu (admin-ajax uca_contact) → eklenti → masaüstü uçtan uca; 61 birim testi. 🟡 Canlı sitede tema v6; mesaj saklama yapısı aynı olmalı, kurulumda "Bağlantıyı test et" bekleyen tema mesajı sayısını gösterir.

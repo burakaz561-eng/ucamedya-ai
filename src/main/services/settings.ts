@@ -47,6 +47,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     webDailyLimitEmail: 30,
     webDailyLimitWhatsapp: 20,
     attachReport: false,
+    image: { path: '', email: true, whatsapp: true },
     templates: { ...DEFAULT_TEMPLATES }
   },
   backup: { auto: true, intervalHours: 24, keep: 10, dir: '' },

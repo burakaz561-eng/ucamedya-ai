@@ -125,7 +125,7 @@ export default function Settings({ settings, setSettings, params }: PageProps) {
             </div>
             {s.outreach.emailChannel === 'webmail' && <Field label="Webmail adresi" hint="Hosting firmanızın webmail giriş sayfası, ör. https://ucamedya.com.tr/webmail/"><input className="input" value={s.outreach.webmailUrl} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, webmailUrl: e.target.value } })} placeholder="https://ucamedya.com.tr/webmail/" /></Field>}
             {s.outreach.whatsappChannel === 'web' && <Callout tone="warn">WhatsApp Web otomasyonu WhatsApp kullanım koşullarına aykırı sayılabilir ve hesabınız kısıtlanabilir. Uygulama spam kontrollerini atlatmaya çalışmaz; her mesajdan önce alıcı numarasını ve metni doğrular. Günlük sınırı düşük tutmanız ve "Onaylı gönderim" modunu kullanmanız önerilir.</Callout>}
-            <label className="check"><input type="checkbox" checked={s.outreach.attachReport} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, attachReport: e.target.checked } })} /><div><b>E-postaya PDF analiz raporunu ekle</b><div className="small muted">Gmail üzerinden gönderimde son analiz raporu eklenir.</div></div></label>
+            <label className="check"><input type="checkbox" checked={s.outreach.attachReport} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, attachReport: e.target.checked } })} /><div><b>E-postaya PDF analiz raporunu ekle</b><div className="small muted">Webmail / Gmail üzerinden gönderimde şirketin son analiz raporu eklenir.</div></div></label>
             <label className="check"><input type="checkbox" checked={s.outreach.testMode} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, testMode: e.target.checked } })} /><div><b>Test modu</b><div className="small muted">Açıkken uygulamanın kendisinin gönderdiği tüm mesajlar (webmail, WhatsApp Web) test alıcısına yönlendirilir. İstisna: WhatsApp masaüstü uygulamasında sohbet şirketin numarasıyla açılır, çünkü Enter'a siz basmadıkça hiçbir şey gönderilmez.</div></div></label>
             <div className="grid g2">
               <Field label="Test e-posta alıcısı"><input className="input" value={s.outreach.testRecipientEmail} onChange={(e) => setS({ ...s, outreach: { ...s.outreach, testRecipientEmail: e.target.value } })} /></Field>
@@ -263,12 +263,34 @@ function TemplatesEditor({ s, setS }: { s: AppSettings; setS: (v: AppSettings) =
   const t = s.outreach.templates
   const set = (patch: Partial<AppSettings['outreach']['templates']>) => setS({ ...s, outreach: { ...s.outreach, templates: { ...t, ...patch } } })
   const vars = { ...SAMPLE, brandName: s.brand.name || SAMPLE.brandName, brandWeb: s.brand.website || SAMPLE.brandWeb }
+  const img = s.outreach.image ?? { path: '', email: true, whatsapp: true }
+  const [imgData, setImgData] = useState<string | null>(null)
+  useEffect(() => {
+    call<string | null>('outreach:imageData').then(setImgData).catch(() => setImgData(null))
+  }, [img.path])
+  const setImg = (patch: Partial<typeof img>) => setS({ ...s, outreach: { ...s.outreach, image: { ...img, ...patch } } })
+  const showImg = imgData && (prev === 'email' ? img.email : img.whatsapp)
   return (
     <div className="col" style={{ gap: 12, borderTop: '1px solid var(--line)', paddingTop: 16 }}>
       <div><b>Mesaj şablonları</b><div className="small muted">Yapay zekâ kapalıyken taslaklar bu metinlerden üretilir; açıkken yapay zekâ bu şablonun yapısını ve tonunu korur. E-postada imza, her iki kanalda ret bilgisi otomatik eklenir.</div></div>
       <Field label="E-posta konusu"><input className="input" value={t.emailSubject} onChange={(e) => set({ emailSubject: e.target.value })} /></Field>
       <Field label="E-posta metni"><textarea className="textarea" style={{ minHeight: 220 }} value={t.emailBody} onChange={(e) => set({ emailBody: e.target.value })} /></Field>
       <Field label="WhatsApp metni"><textarea className="textarea" style={{ minHeight: 170 }} value={t.whatsappBody} onChange={(e) => set({ whatsappBody: e.target.value })} /></Field>
+      <div className="col" style={{ gap: 8 }}>
+        <b className="small">Mesaj görseli (isteğe bağlı)</b>
+        <div className="row wrap" style={{ gap: 12, alignItems: 'flex-start' }}>
+          {imgData ? <img src={imgData} alt="Mesaj görseli" style={{ width: 140, maxHeight: 140, objectFit: 'contain', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--bg)' }} /> : <div className="muted small" style={{ width: 140, height: 90, border: '1px dashed var(--line)', borderRadius: 10, display: 'grid', placeItems: 'center', textAlign: 'center' }}>Görsel yok</div>}
+          <div className="col" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 6 }}>
+              <Btn size="sm" onClick={async () => { const p = await run(() => call<string | null>('outreach:pickImage')); if (p) setImg({ path: p }) }}>{img.path ? 'Görseli değiştir' : 'Görsel seç (PNG/JPG, en fazla 5 MB)'}</Btn>
+              {img.path && <Btn size="sm" onClick={() => run(() => call('outreach:copyImage'), 'Görsel panoya kopyalandı — WhatsApp’ta bir sohbete yapıştırarak deneyebilirsiniz')}>Panoya kopyala (dene)</Btn>}
+              {img.path && <Btn size="sm" variant="ghost" onClick={async () => { await run(() => call('outreach:clearImage')); setImg({ path: '' }) }}>Kaldır</Btn>}
+            </div>
+            <label className="check"><input type="checkbox" checked={img.email} onChange={(e) => setImg({ email: e.target.checked })} /><span className="small">E-postalara ek olarak ekle</span></label>
+            <label className="check"><input type="checkbox" checked={img.whatsapp} onChange={(e) => setImg({ whatsapp: e.target.checked })} /><span className="small">WhatsApp mesajlarında kullan — WhatsApp masaüstü uygulaması dışarıdan dosya eklemeye izin vermediği için görsel panoya kopyalanır; sohbet açılınca Ctrl+V (Mac'te Cmd+V) ile yapıştırırsınız</span></label>
+          </div>
+        </div>
+      </div>
       <div className="small muted">Kullanılabilir alanlar: {TEMPLATE_PLACEHOLDERS.map((p) => <span key={p.key} title={p.label} style={{ marginRight: 8 }}><code>{p.key}</code></span>)}</div>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <Btn size="sm" variant={prev === 'email' ? 'primary' : 'ghost'} onClick={() => setPrev('email')}>E-posta önizleme</Btn>
@@ -279,6 +301,7 @@ function TemplatesEditor({ s, setS }: { s: AppSettings; setS: (v: AppSettings) =
       <div className="card" style={{ whiteSpace: 'pre-wrap', fontSize: 13, padding: 14, background: 'var(--bg-2, transparent)' }}>
         {prev === 'email' && <div style={{ marginBottom: 8 }}><b>Konu:</b> {renderTemplate(t.emailSubject, vars)}</div>}
         {renderTemplate(prev === 'email' ? t.emailBody : t.whatsappBody, vars)}
+        {showImg && <div style={{ marginTop: 10 }}><div className="tiny muted">{prev === 'email' ? 'Ek:' : 'Görsel:'}</div><img src={imgData!} alt="" style={{ maxWidth: 200, borderRadius: 8, border: '1px solid var(--line)' }} /></div>}
         <div className="tiny muted" style={{ marginTop: 8 }}>Örnek şirket: "{SAMPLE.company}" (sektör: {SAMPLE.sector})</div>
       </div>
     </div>

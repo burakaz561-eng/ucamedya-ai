@@ -19,9 +19,14 @@ describe.runIf(!!process.env.CDP_PORT && !!process.env.WEBMAIL)('canlı Roundcub
     const st = await rc.status()
     console.log('status', st)
     expect(st.loggedIn).toBe(true)
-    const r = await rc.prepare({ to: process.env.TO ?? 'info@ucamedya.com.tr', subject: 'UcaMedya AI — modül testi (gönderilmedi)', body: 'Bu taslak UcaMedya AI webmail modülü testinde oluşturuldu ve GÖNDERİLMEDİ.\nİkinci satır.' })
+    const r = await rc.prepare({ to: process.env.TO ?? 'info@ucamedya.com.tr', subject: 'UcaMedya AI — modül testi (gönderilmedi)', body: 'Bu taslak UcaMedya AI webmail modülü testinde oluşturuldu ve GÖNDERİLMEDİ.\nİkinci satır.', attachment: process.env.ATTACH ? process.env.ATTACH.split(';') : null })
     console.log('prepare', r)
     expect(r.ok).toBe(true)
+    if (process.env.ATTACH) {
+      const names = (await page.evaluate("Object.values(rcmail.env.attachments || {}).map((a) => a.name || a)")) as unknown[]
+      console.log('ekler', names)
+      expect((await page.locator('#attachment-list li').count())).toBe(process.env.ATTACH.split(';').length)
+    }
     await rc.saveDraft()
     console.log('draft_id', await page.evaluate('rcmail.env.draft_id'))
     await page.close()

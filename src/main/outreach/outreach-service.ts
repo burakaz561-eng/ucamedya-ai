@@ -10,6 +10,8 @@
 //  - Gönderim aralıkları yalnızca sağlayıcı sınırları ve güvenilirlik içindir; rastgele bekleme / tespit atlatma YOKTUR.
 
 import { shell } from 'electron'
+import { copyImageToClipboard } from './image-clipboard'
+import { imageDataUri, imageFor } from './message-image'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
 import type { CompanyService } from '../services/companies'
@@ -48,6 +50,9 @@ export interface ConfirmRequest {
   subject: string | null
   body: string
   attachment: string | null
+  /** Mesaja eklenen görselin önizlemesi (veri adresi) ve kullanıcıya not */
+  image?: string | null
+  imageNote?: string | null
   preview: string | null
   testMode: boolean
   /** true: gönderimi kullanıcı WhatsApp uygulamasında kendisi yapar, burada yalnızca sonucu bildirir */
@@ -414,7 +419,8 @@ export class OutreachService {
         if (!pass) throw new Error('E-posta hesabı parolası kayıtlı değil')
         const to = testMode ? s.outreach.testRecipientEmail : m.recipient_key
         const subject = testMode ? `[TEST → ${m.recipient_key}] ${m.subject ?? ''}` : m.subject ?? ''
-        const r = await sendEmail(acc, pass, { to, subject, text: m.body, unsubscribeMailto: acc.from_email })
+        const img = imageFor('email', s.outreach.image)
+        const r = await sendEmail(acc, pass, { to, subject, text: m.body, unsubscribeMailto: acc.from_email, attachments: img ? [{ filename: img.split(/[\\/]/).pop()!, path: img }] : undefined })
         providerId = r.messageId
       } else {
         const wa = this.whatsappAccount()
@@ -461,6 +467,11 @@ export class OutreachService {
     const s = this.settings.get()
     const company = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
     const to = m.recipient_key
+    const img = imageFor('whatsapp', s.outreach.image)
+    if (img) {
+      // Pano PNG olarak yazılır (JPG de PNG'ye çevrilir); WhatsApp'a Ctrl/Cmd+V ile yapıştırılır
+      await copyImageToClipboard(img).catch((e) => this.companies.log(m.company_id, 'Görsel panoya kopyalanamadı', (e as Error).message, 'system'))
+    }
     await shell.openExternal(whatsappDesktopUrl(to, m.body))
     this.companies.log(m.company_id, 'WhatsApp uygulamasında sohbet açıldı', `+${to}`, 'system', 'message', m.id)
     if (s.outreach.sendMode === 'draft') {
@@ -472,7 +483,7 @@ export class OutreachService {
     const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
       this.pendingConfirm.set(m.id, resolve)
       const rec = this.recipient(m.company_id, 'whatsapp')
-      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, preview: null, testMode: false, manualSend: true })
+      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, image: img ? imageDataUri(img) : null, imageNote: img ? `Görsel panoya kopyalandı. WhatsApp'ta mesaj kutusuna tıklayıp ${process.platform === 'darwin' ? 'Cmd+V' : 'Ctrl+V'} ile yapıştırın ve görsel ekranında gönderin; metin kutuda kaldıysa onu da Enter ile gönderin.` : null, preview: null, testMode: false, manualSend: true })
     })
     this.emitConfirm({ messageId: m.id, closed: true })
     if (decision === 'send') return 'sent'
@@ -495,8 +506,14 @@ export class OutreachService {
     await this.web.ensureStarted()
     const to = testMode ? (m.channel === 'email' ? s.outreach.testRecipientEmail : phoneKey(s.outreach.testRecipientPhone)) : m.recipient_key
     const subject = testMode && m.subject ? `[TEST → ${m.recipient_key}] ${m.subject}` : (m.subject ?? '')
-    let attachment: string | null = null
-    if (m.channel === 'email' && s.outreach.attachReport) attachment = this.db.get<{ report_path: string }>('SELECT report_path FROM website_analyses WHERE company_id = ? AND report_path IS NOT NULL ORDER BY id DESC LIMIT 1', m.company_id)?.report_path ?? null
+    const attachments: string[] = []
+    if (m.channel === 'email' && s.outreach.attachReport) {
+      const rp = this.db.get<{ report_path: string }>('SELECT report_path FROM website_analyses WHERE company_id = ? AND report_path IS NOT NULL ORDER BY id DESC LIMIT 1', m.company_id)?.report_path
+      if (rp) attachments.push(rp)
+    }
+    const img = m.channel === 'email' ? imageFor('email', s.outreach.image) : null
+    if (img) attachments.push(img)
+    const attachment = attachments.length ? attachments.join(', ') : null
 
     // 1) Oturum ve hazırlık (henüz gönderilmez)
     let verified = false
@@ -517,7 +534,7 @@ export class OutreachService {
     } else {
       const mail = this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail
       await mail.ensureLoggedIn(company)
-      const r = await mail.prepare({ to, subject, body: m.body, attachment }, company)
+      const r = await mail.prepare({ to, subject, body: m.body, attachment: attachments }, company)
       if (!r.ok) {
         setStatus('failed', r.reason)
         this.pauseQueue(m.channel)
@@ -544,7 +561,7 @@ export class OutreachService {
       const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
         this.pendingConfirm.set(m.id, resolve)
         const rec = this.recipient(m.company_id, m.channel)
-        this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, preview, testMode })
+        this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, image: img ? imageDataUri(img) : null, imageNote: img ? 'Görsel e-postaya ek olarak eklendi.' : m.channel === 'whatsapp' && imageFor('whatsapp', s.outreach.image) ? 'WhatsApp Web kanalında görsel ekleme henüz desteklenmiyor; yalnızca metin gönderilir.' : null, preview, testMode })
       })
       this.emitConfirm({ messageId: m.id, closed: true })
       if (decision !== 'send') {

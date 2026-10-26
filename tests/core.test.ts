@@ -656,3 +656,23 @@ describe('0.3 asistan', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+describe('mesaj görseli', () => {
+  it('yalnızca PNG/JPG ve 5 MB altı; kanala göre açılıp kapanır', async () => {
+    const { imageFor, validImage, imageDataUri } = await import('../src/main/outreach/message-image')
+    const { writeFileSync } = await import('node:fs')
+    const dir = mkdtempSync(join(tmpdir(), 'uca-img-'))
+    const png = join(dir, 'a.png')
+    writeFileSync(png, Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a0d5c0a90000000049454e44ae426082', 'hex'))
+    const gif = join(dir, 'a.gif')
+    writeFileSync(gif, 'GIF89a')
+    expect(validImage(png)).toBe(true)
+    expect(validImage(gif)).toBe(false)
+    expect(validImage(join(dir, 'yok.png'))).toBe(false)
+    expect(imageFor('email', { path: png, email: true, whatsapp: false })).toBe(png)
+    expect(imageFor('whatsapp', { path: png, email: true, whatsapp: false })).toBeNull()
+    expect(imageFor('email', { path: '', email: true, whatsapp: true })).toBeNull()
+    expect(imageDataUri(png)).toMatch(/^data:image\/png;base64,/)
+    rmSync(dir, { recursive: true, force: true })
+  })
+})

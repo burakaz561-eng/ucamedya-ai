@@ -317,6 +317,27 @@ await step('Excel dışa aktarma bileşeni (kayıtlar gerçek)', async () => {
   if (st.companies < 1 || st.analyzed < 1) throw new Error(JSON.stringify({ c: st.companies, a: st.analyzed }))
 })
 
+await step('mesaj görseli: ayar, önizleme, panoya PNG', async () => {
+  const { writeFileSync } = await import('node:fs')
+  const img = join(userData, 'kampanya.png')
+  const { readFileSync } = await import('node:fs')
+  writeFileSync(img, readFileSync(join(root, 'build', 'icon.png')))
+  const cur = (await inv('settings:get')).outreach
+  await inv('settings:update', { outreach: { ...cur, image: { path: img, email: true, whatsapp: true } } })
+  const data = await inv('outreach:imageData')
+  if (!(data ?? '').startsWith('data:image/png;base64,')) throw new Error('Önizleme yok')
+  await app.evaluate(({ clipboard }) => clipboard.clear())
+  await inv('outreach:copyImage')
+  const has = await app.evaluate(({ clipboard }) => clipboard.has('image/png'))
+  if (!has) throw new Error('Panoda PNG yok')
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'Uygulama Ayarları' }).click()
+  await page.getByRole('tab', { name: 'Mesaj gönderimi' }).click()
+  await page.locator('img[alt="Mesaj görseli"]').first().scrollIntoViewIfNeeded()
+  await page.waitForTimeout(600)
+  await shot('10b-mesaj-gorseli')
+})
+
 await step('dolu ekranlar: genel bakış, analiz, raporlar, dosyalar, otomasyonlar', async () => {
   for (const [label, key] of [['Genel Bakış', 'dashboard'], ['Web Sitesi Analizi', 'analysis'], ['Raporlar ve Analitik', 'reports'], ['Dosya Merkezi', 'files'], ['Görevler ve Otomasyonlar', 'automations'], ['Entegrasyonlar', 'integrations']]) {
     await ensureShown()
