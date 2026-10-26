@@ -224,6 +224,23 @@ await step('stüdyo: düzenlenen taslak Kaydet sonrası korunur; şablon değiş
   console.log(`   yalnızca onay bekleyen (engel sayılmayan) taslak: ${blocked.length}`)
 })
 
+await step('stüdyo: toplu onay', async () => {
+  await inv('drafts:create', { companyId, channel: 'email', tone: 'professional' })
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'AI Mesaj Stüdyosu' }).click()
+  await page.locator('.seg button', { hasText: 'Onay bekleyen' }).click()
+  await page.waitForTimeout(900)
+  const n = await page.locator('.list-item input[type=checkbox]:not([disabled])').count()
+  if (n < 2) throw new Error(`Onay bekleyen taslak az: ${n}`)
+  await page.getByLabel('Tümünü seç').check()
+  await page.locator('.studio-bulk').getByRole('button', { name: 'Onayla' }).click()
+  await page.getByRole('button', { name: new RegExp(`^${n} taslağı onayla`) }).click()
+  await page.waitForTimeout(1200)
+  const left = (await inv('drafts:list', { status: 'draft' })).length
+  if (left !== 0) throw new Error(`Onaylanmayan kaldı: ${left}`)
+  await shot('08c-toplu-onay')
+})
+
 await step('ret listesi: işaretlenen şirkete taslak oluşturulamıyor', async () => {
   const other = await inv('companies:create', { name: 'Ret Test Ltd', city: 'Kocaeli', email: 'info@ret-test.example' })
   await inv('companies:suppress', { id: other, reason: 'test' })

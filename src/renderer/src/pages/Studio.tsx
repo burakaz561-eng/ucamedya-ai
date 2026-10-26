@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Check, X, Save, Wand2, Send } from 'lucide-react'
 import { call, useApi } from '../lib/api'
 import { useNav } from '../lib/nav'
-import { Badge, Btn, Callout, Card, Empty, Field, Loading, Seg, useAction } from '../components/ui'
+import { Badge, Btn, Callout, Card, Empty, Field, Loading, Seg, useAction, useConfirm } from '../components/ui'
 import { RobotHint } from '../robot/Robot'
 import { MESSAGE_TONES, REWRITE_ACTIONS, SEVERITY_LABELS } from '@shared/constants'
 import { DRAFT_STATUS, fmtRel } from '../lib/format'
@@ -22,6 +22,30 @@ export default function Studio({ params }: PageProps) {
     if (!sel && drafts?.length) setSel(drafts[0].id)
   }, [drafts, sel])
   const { openCompany } = useNav()
+  // Toplu seçim: gönderilmiş / kuyruktaki taslaklar seçilemez
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  useEffect(() => setPicked(new Set()), [channel, status])
+  const selectable = (drafts ?? []).filter((d) => d.status !== 'sent' && d.status !== 'queued')
+  const pickedRows = selectable.filter((d) => picked.has(d.id))
+  const allPicked = selectable.length > 0 && pickedRows.length === selectable.length
+  const toggle = (id: number) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const { run, busy } = useAction()
+  const { ask, node } = useConfirm()
+  const bulk = async (to: 'approved' | 'draft' | 'rejected') => {
+    const rows = pickedRows.filter((d) => d.status !== to)
+    if (!rows.length) return
+    if (to === 'approved') {
+      const blocked = rows.filter((d) => realBlocks(d.eligibility).length > 0).length
+      const ok = await ask(`${rows.length} taslak onaylansın mı?`, <>Onaylanan taslaklar E-posta / WhatsApp ekranlarında kuyruğa eklenebilir; gönderim yine sizin başlatmanız ve (onaylı gönderim modunda) her mesajı onaylamanızla yapılır.{blocked > 0 && <><br /><br /><b>{blocked} taslakta gönderim engeli var</b> (ör. geçerli alıcı yok); onaylansa da gönderilmez.</>}</>, { confirm: `${rows.length} taslağı onayla` })
+      if (!ok) return
+    }
+    const label = to === 'approved' ? 'onaylandı' : to === 'rejected' ? 'reddedildi' : 'onay bekleyene alındı'
+    const r = await run(() => call<{ changed: number; skipped: number }>('drafts:setStatus', { ids: rows.map((d) => d.id), status: to }), (x) => `${x.changed} taslak ${label}${x.skipped ? ` · ${x.skipped} atlandı (ret listesi / kuyrukta)` : ''}`)
+    if (r) {
+      setPicked(new Set())
+      reload()
+    }
+  }
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="page-head">
@@ -39,9 +63,20 @@ export default function Studio({ params }: PageProps) {
       ) : (
         <div className="grid" style={{ gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 2fr)', alignItems: 'start' }}>
           <Card pad={false}>
-            <div style={{ maxHeight: 'calc(100vh - 230px)', overflow: 'auto' }}>
+            <div className="studio-bulk">
+              <label className="check" style={{ margin: 0 }}><input type="checkbox" aria-label="Tümünü seç" checked={allPicked} disabled={!selectable.length} onChange={(e) => setPicked(e.target.checked ? new Set(selectable.map((d) => d.id)) : new Set())} /><span className="small">{pickedRows.length ? `${pickedRows.length} seçili` : `Tümünü seç (${selectable.length})`}</span></label>
+              {pickedRows.length > 0 && (
+                <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <Btn size="sm" variant="primary" icon={<Check />} disabled={busy} onClick={() => bulk('approved')}>Onayla</Btn>
+                  <Btn size="sm" disabled={busy} onClick={() => bulk('draft')}>Onayı kaldır</Btn>
+                  <Btn size="sm" variant="ghost" icon={<X />} disabled={busy} onClick={() => bulk('rejected')}>Reddet</Btn>
+                </div>
+              )}
+            </div>
+            <div style={{ maxHeight: 'calc(100vh - 280px)', overflow: 'auto' }}>
               {drafts.map((d) => (
-                <button key={d.id} onClick={() => setSel(d.id)} className="list-item" style={{ width: '100%', border: 0, background: sel === d.id ? 'var(--brand-soft)' : 'transparent', textAlign: 'left', padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--line)' }}>
+                <div key={d.id} role="button" tabIndex={0} onClick={() => setSel(d.id)} onKeyDown={(e) => { if (e.key === 'Enter') setSel(d.id) }} className="list-item" style={{ width: '100%', background: sel === d.id ? 'var(--brand-soft)' : 'transparent', textAlign: 'left', padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--line)', alignItems: 'flex-start' }}>
+                  <input type="checkbox" aria-label={`${d.company_name} seç`} checked={picked.has(d.id)} disabled={d.status === 'sent' || d.status === 'queued'} onClick={(e) => e.stopPropagation()} onChange={() => toggle(d.id)} style={{ marginTop: 3 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="row"><b className="ellipsis">{d.company_name}</b></div>
                     <div className="tiny muted ellipsis">{d.subject ?? d.body.slice(0, 60)}</div>
@@ -51,13 +86,14 @@ export default function Studio({ params }: PageProps) {
                       {d.status !== 'sent' && realBlocks(d.eligibility).length > 0 && <span title={realBlocks(d.eligibility).join('\n')}><Badge tone="danger">Engel var</Badge></span>}
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           </Card>
           {sel ? <Editor id={sel} key={sel} onChanged={reload} openCompany={openCompany} onSelect={setSel} /> : null}
         </div>
       )}
+      {node}
     </div>
   )
 }

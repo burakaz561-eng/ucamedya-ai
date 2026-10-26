@@ -243,11 +243,20 @@ export class OutreachService {
     ).map((r) => ({ ...r, used_findings: j(r.used_findings, []), eligibility: this.eligibilityFor(r.id as number) }))
   }
 
-  setDraftStatus(ids: number[], status: 'approved' | 'draft' | 'rejected') {
+  setDraftStatus(ids: number[], status: 'approved' | 'draft' | 'rejected'): { changed: number; skipped: number } {
+    let changed = 0
+    let skipped = 0
     for (const id of ids) {
       const d = this.db.get<{ company_id: number; status: string }>('SELECT company_id, status FROM outreach_drafts WHERE id = ?', id)
-      if (!d || d.status === 'sent' || d.status === 'queued') continue
-      if (status === 'approved' && this.companies.isSuppressed(d.company_id)) continue
+      if (!d || d.status === 'sent' || d.status === 'queued') {
+        skipped++
+        continue
+      }
+      if (status === 'approved' && this.companies.isSuppressed(d.company_id)) {
+        skipped++
+        continue
+      }
+      changed++
       this.db.run(`UPDATE outreach_drafts SET status = ?, approved_at = ${status === 'approved' ? "strftime('%Y-%m-%dT%H:%M:%fZ','now')" : 'NULL'} WHERE id = ?`, status, id)
       if (status === 'approved') {
         this.db.run("UPDATE companies SET stage_key = CASE WHEN stage_key IN ('new','researching','awaiting_analysis','analyzed','review') THEN 'approved' ELSE stage_key END WHERE id = ?", d.company_id)
@@ -255,6 +264,7 @@ export class OutreachService {
       }
     }
     this.emitChange('drafts')
+    return { changed, skipped }
   }
 
   // ---------------- Uygunluk ----------------

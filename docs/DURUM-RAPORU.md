@@ -2,6 +2,10 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.4 — Stüdyoda toplu onay
+
+AI Mesaj Stüdyosu listesinde her taslakta onay kutusu ve "Tümünü seç"; seçilenler için Onayla / Onayı kaldır / Reddet. Onaylamadan önce kaç taslak onaylanacağı ve kaçında gönderim engeli olduğu sorulur; ret listesindekiler ve kuyruktakiler atlanır, sayısı bildirilir. ✅ e2e (gerçek arayüzde tümünü seç → onayla).
+
 ## 0.3.3 — Taslak düzenleme düzeltmeleri
 
 - Stüdyo'da Kaydet sonrası metnin eski hâline dönmesi düzeltildi (kayıt veritabanına yapılıyordu, ekran eski listeyle yeniden doluyordu). ✅ e2e (gerçek arayüzde yaz → Kaydet → metin korunuyor).

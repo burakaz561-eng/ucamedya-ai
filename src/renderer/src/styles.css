@@ -324,3 +324,6 @@ table.dt td.wrap { white-space: normal; }
 .am-item:not(:disabled):hover { border-color: var(--brand); }
 .assistant-ex { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
 .assistant-input { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+
+/* Stüdyo toplu işlem çubuğu */
+.studio-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 1; }
