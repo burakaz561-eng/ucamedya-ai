@@ -2,6 +2,16 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.5 — Toplu kuyruğa ekleme ve silme
+
+- E-posta Kampanyaları / WhatsApp İşlemleri: "Seçilenleri kuyruğa ekle" onaylı ve onay bekleyen taslakları tek adımda kuyruğa alır (onay bekleyenler önce onaylanır, sayısı onay penceresinde yazar).
+- "Seçilenleri sil" (taslaklar; kuyruktaki/gönderilmiş silinmez) — Stüdyo toplu çubuğunda da "Sil".
+- Gönderimler sekmesinde seçerek ya da satırdan "Kuyruktan çıkar" (taslak onaylıya döner).
+- Hata düzeltmesi: kuyruk iptal edildikten sonra aynı alıcıya mesaj yeniden kuyruğa alınamıyordu ("zaten bir mesaj kaydı var"); iptal edilmiş, hiç gönderilmemiş kayıt artık engel olmaz. Gönderilmiş mesajlar için tekrar gönderim engeli aynen sürer.
+- İletişim uygunluğu sütununda "henüz onaylanmadı" artık engel sayılmaz.
+
+✅ birim testi (servis: ekle → çıkar → iptal → yeniden ekle → sil) + e2e (arayüzden sil).
+
 ## 0.3.4 — Stüdyoda toplu onay
 
 AI Mesaj Stüdyosu listesinde her taslakta onay kutusu ve "Tümünü seç"; seçilenler için Onayla / Onayı kaldır / Reddet. Onaylamadan önce kaç taslak onaylanacağı ve kaçında gönderim engeli olduğu sorulur; ret listesindekiler ve kuyruktakiler atlanır, sayısı bildirilir. ✅ e2e (gerçek arayüzde tümünü seç → onayla).

@@ -347,6 +347,8 @@ export class OutreachService {
       const rec = this.recipient(d.company_id, d.channel)!
       const key = idempotencyKey(d.channel, d.company_id, rec.key, campaign) + (s.outreach.testMode ? `:test:${Date.now()}` : '')
       try {
+        // İptal edilmiş (hiç gönderilmemiş) eski kayıt tekrar kuyruğa almayı engellemesin
+        this.db.run("DELETE FROM outreach_messages WHERE idempotency_key = ? AND status = 'cancelled'", key)
         this.db.run('INSERT INTO outreach_messages(company_id, draft_id, channel, recipient, recipient_key, subject, body, idempotency_key, campaign, test_mode) VALUES (?,?,?,?,?,?,?,?,?,?)', d.company_id, id, d.channel, rec.display, rec.key, d.subject, d.body, key, campaign, s.outreach.testMode)
         this.db.run("UPDATE outreach_drafts SET status = 'queued' WHERE id = ?", id)
         queued++
@@ -356,6 +358,32 @@ export class OutreachService {
     }
     this.emitChange('outreach')
     return { queued, skipped }
+  }
+
+  /** Gönderilmemiş taslakları siler (kuyruktaki ve gönderilmiş taslaklar silinemez). */
+  deleteDrafts(ids: number[]): { deleted: number; skipped: number } {
+    let deleted = 0
+    for (const id of ids) {
+      const r = this.db.run("DELETE FROM outreach_drafts WHERE id = ? AND status IN ('draft','approved','rejected')", id)
+      deleted += r.changes
+    }
+    this.emitChange('drafts')
+    return { deleted, skipped: ids.length - deleted }
+  }
+
+  /** Kuyruktaki (henüz gönderilmemiş) mesajları kuyruktan çıkarır; taslak onaylı duruma döner. */
+  dequeue(messageIds: number[]): number {
+    let n = 0
+    for (const id of messageIds) {
+      const m = this.db.get<{ draft_id: number | null; status: string }>('SELECT draft_id, status FROM outreach_messages WHERE id = ?', id)
+      if (!m || m.status !== 'queued') continue
+      this.db.run('DELETE FROM outreach_messages WHERE id = ?', id)
+      if (m.draft_id) this.db.run("UPDATE outreach_drafts SET status = 'approved' WHERE id = ? AND status = 'queued'", m.draft_id)
+      n++
+    }
+    this.emitChange('outreach')
+    this.emitChange('drafts')
+    return n
   }
 
   queueState(channel: Channel): 'running' | 'paused' | 'stopped' {

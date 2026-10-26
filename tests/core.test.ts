@@ -685,3 +685,38 @@ describe('ret satırını çıkarma', () => {
     expect(stripLine(body, line)).toBe('Merhaba,\nBenim düzenlediğim metin.\n\nİyi çalışmalar,\n\nUcaMedya\nhttps://ucamedya.com.tr/')
   })
 })
+
+describe('kuyruk: toplu ekleme, kuyruktan çıkarma, iptal sonrası yeniden ekleme, silme', () => {
+  it('çalışır ve gönderilmiş/kuyruktaki taslak silinemez', async () => {
+    const { OutreachService } = await import('../src/main/outreach/outreach-service')
+    const dir = mkdtempSync(join(tmpdir(), 'uca-q-'))
+    const db = new Db(join(dir, 'q.sqlite'))
+    db.migrate()
+    const files = new FileStore(db, () => join(dir, 'data'))
+    const cs = new CompanyService(db, files)
+    const settings = new SettingsService(db)
+    settings.update({ outreach: { ...settings.get().outreach, emailChannel: 'smtp', testMode: true, testRecipientEmail: 'test@ucamedya.com.tr', includeOptOutLine: false } } as any)
+    db.run("INSERT INTO email_accounts(label, provider, from_email, status) VALUES ('t', 'smtp', 'info@ucamedya.com.tr', 'ok')")
+    const os = new OutreachService(db, cs, settings, { get: () => undefined, has: () => false } as any, files, () => null, () => undefined)
+    const ids: number[] = []
+    for (const [n, e] of [['Alfa Lojistik', 'info@alfa.com.tr'], ['Beta Lojistik', 'info@beta.com.tr'], ['Gama Lojistik', 'info@gama.com.tr']]) {
+      const c = cs.create({ name: n, source: 'manual' } as any)
+      cs.addContact(c, { type: 'email', value: e, sourceType: 'website' })
+      ids.push((await os.createDraft(c, 'email', 'professional', false) as any).id)
+    }
+    os.setDraftStatus(ids, 'approved')
+    expect(os.enqueue(ids).queued).toBe(3)
+    expect(os.deleteDrafts(ids)).toEqual({ deleted: 0, skipped: 3 })
+    const msgs = db.all<{ id: number }>("SELECT id FROM outreach_messages WHERE status = 'queued' ORDER BY id")
+    expect(os.dequeue([msgs[0].id])).toBe(1)
+    expect(db.get<{ status: string }>('SELECT status FROM outreach_drafts WHERE id = ?', ids[0])!.status).toBe('approved')
+    os.cancelQueue('email')
+    const again = os.enqueue(ids)
+    expect(again.queued).toBe(3)
+    expect(again.skipped).toEqual([])
+    os.cancelQueue('email')
+    expect(os.deleteDrafts([ids[2]])).toEqual({ deleted: 1, skipped: 0 })
+    ;(db.raw as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
+  })
+})

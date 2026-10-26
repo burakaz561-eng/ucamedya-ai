@@ -241,6 +241,21 @@ await step('stüdyo: toplu onay', async () => {
   await shot('08c-toplu-onay')
 })
 
+await step('e-posta ekranı: seçileni sil', async () => {
+  const before = (await inv('drafts:list', { channel: 'email' })).filter((d) => ['draft', 'approved', 'rejected'].includes(d.status)).length
+  if (before < 1) throw new Error('Silinecek e-posta taslağı yok')
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'E-posta Kampanyaları' }).click()
+  await page.waitForTimeout(900)
+  await page.locator('table tbody tr input[type=checkbox]').first().check()
+  await page.getByRole('button', { name: 'Seçilenleri sil' }).click()
+  await page.getByRole('button', { name: /taslağı sil$/ }).click()
+  await page.waitForTimeout(1000)
+  const after = (await inv('drafts:list', { channel: 'email' })).filter((d) => ['draft', 'approved', 'rejected'].includes(d.status)).length
+  if (after !== before - 1) throw new Error(`Silinmedi: ${before} → ${after}`)
+  await shot('08d-eposta-sil')
+})
+
 await step('ret listesi: işaretlenen şirkete taslak oluşturulamıyor', async () => {
   const other = await inv('companies:create', { name: 'Ret Test Ltd', city: 'Kocaeli', email: 'info@ret-test.example' })
   await inv('companies:suppress', { id: other, reason: 'test' })

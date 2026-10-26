@@ -1,7 +1,7 @@
 // AI Mesaj Stüdyosu: taslak düzenleyici, yeniden yazma eylemleri, kanıt paneli, uygunluk kontrolü ve onay.
 
 import { useEffect, useState } from 'react'
-import { Check, X, Save, Wand2, Send } from 'lucide-react'
+import { Check, X, Save, Wand2, Send, Trash2 } from 'lucide-react'
 import { call, useApi } from '../lib/api'
 import { useNav } from '../lib/nav'
 import { Badge, Btn, Callout, Card, Empty, Field, Loading, Seg, useAction, useConfirm } from '../components/ui'
@@ -46,6 +46,17 @@ export default function Studio({ params }: PageProps) {
       reload()
     }
   }
+  const removePicked = async () => {
+    const rows = pickedRows.filter((d) => ['draft', 'approved', 'rejected'].includes(d.status))
+    if (!rows.length) return
+    if (!(await ask(`${rows.length} taslak silinsin mi?`, 'Seçilen taslaklar kalıcı olarak silinir. Şirket kayıtları ve iletişim geçmişi silinmez.', { danger: true, confirm: `${rows.length} taslağı sil` }))) return
+    const r = await run(() => call<{ deleted: number }>('drafts:deleteMany', { ids: rows.map((d) => d.id) }), (x) => `${x.deleted} taslak silindi`)
+    if (r) {
+      if (sel && rows.some((d) => d.id === sel)) setSel(null)
+      setPicked(new Set())
+      reload()
+    }
+  }
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="page-head">
@@ -70,6 +81,7 @@ export default function Studio({ params }: PageProps) {
                   <Btn size="sm" variant="primary" icon={<Check />} disabled={busy} onClick={() => bulk('approved')}>Onayla</Btn>
                   <Btn size="sm" disabled={busy} onClick={() => bulk('draft')}>Onayı kaldır</Btn>
                   <Btn size="sm" variant="ghost" icon={<X />} disabled={busy} onClick={() => bulk('rejected')}>Reddet</Btn>
+                  <Btn size="sm" variant="ghost" icon={<Trash2 />} disabled={busy} onClick={removePicked}>Sil</Btn>
                 </div>
               )}
             </div>
