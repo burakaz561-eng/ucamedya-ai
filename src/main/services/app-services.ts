@@ -388,6 +388,14 @@ export class AppServices {
   }
 
   /** Açılış ekranındaki gerçek sistem kontrolleri (hızlı; ağ testleri kısa zaman aşımıyla). */
+  /** 0.3.3: önceki sürümlerde şablon değişikliği taslaklara yansımıyordu; bir kerelik yenileme. */
+  async oneTimeDraftRefresh() {
+    if (this.settings.getValue('drafts_refreshed_033')) return
+    this.settings.setValue('drafts_refreshed_033', new Date().toISOString())
+    const n = await this.outreach.regenerateDrafts().catch(() => 0)
+    if (n) log('info', `Bir kerelik taslak yenileme: ${n} taslak güncellendi`)
+  }
+
   async startupChecks(): Promise<CheckResult[]> {
     const out: CheckResult[] = []
     const ic = this.db.integrityOk()

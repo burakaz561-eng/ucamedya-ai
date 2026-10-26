@@ -81,6 +81,7 @@ function restartWithDatabase(file?: string) {
 }
 
 function startSchedulers() {
+  timers.push(setTimeout(() => void services.oneTimeDraftRefresh(), 5_000))
   // Hatırlatıcılar (dakikada bir)
   timers.push(
     setInterval(() => {

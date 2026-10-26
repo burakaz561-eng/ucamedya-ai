@@ -676,3 +676,12 @@ describe('mesaj görseli', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+describe('ret satırını çıkarma', () => {
+  it('yalnızca o satır silinir, metnin geri kalanı korunur', async () => {
+    const { stripLine } = await import('../src/main/outreach/outreach-service')
+    const line = 'Bu tür bilgilendirmeler almak istemiyorsanız bu mesaja "İSTEMİYORUM" yazarak yanıt vermeniz yeterlidir; kaydınız hemen listemizden çıkarılır.'
+    const body = 'Merhaba,\nBenim düzenlediğim metin.\n\nİyi çalışmalar,\n\nUcaMedya\nhttps://ucamedya.com.tr/\n\n' + line
+    expect(stripLine(body, line)).toBe('Merhaba,\nBenim düzenlediğim metin.\n\nİyi çalışmalar,\n\nUcaMedya\nhttps://ucamedya.com.tr/')
+  })
+})

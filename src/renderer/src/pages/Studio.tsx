@@ -11,6 +11,8 @@ import { DRAFT_STATUS, fmtRel } from '../lib/format'
 import type { PageProps } from '../lib/page'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/** Onay beklemek bir engel değildir; yalnızca gönderimi gerçekten durduran nedenler */
+const realBlocks = (e: { reasons?: string[] } | undefined) => (e?.reasons ?? []).filter((r) => !/henüz onaylanmadı/.test(r))
 export default function Studio({ params }: PageProps) {
   const [channel, setChannel] = useState<'' | 'email' | 'whatsapp'>('')
   const [status, setStatus] = useState<string>('draft')
@@ -46,7 +48,7 @@ export default function Studio({ params }: PageProps) {
                     <div className="row" style={{ gap: 4, marginTop: 4 }}>
                       <Badge tone={d.channel === 'email' ? 'info' : 'success'}>{d.channel === 'email' ? 'E-posta' : 'WhatsApp'}</Badge>
                       <Badge tone={DRAFT_STATUS[d.status]?.[1]}>{DRAFT_STATUS[d.status]?.[0]}</Badge>
-                      {!d.eligibility.ok && d.status !== 'sent' && <Badge tone="danger">Engel var</Badge>}
+                      {d.status !== 'sent' && realBlocks(d.eligibility).length > 0 && <span title={realBlocks(d.eligibility).join('\n')}><Badge tone="danger">Engel var</Badge></span>}
                     </div>
                   </div>
                 </button>
@@ -61,7 +63,7 @@ export default function Studio({ params }: PageProps) {
 }
 
 function Editor({ id, onChanged, openCompany, onSelect }: { id: number; onChanged: () => void; openCompany: (id: number) => void; onSelect: (id: number) => void }) {
-  const { data: list } = useApi<any[]>('drafts:list', {}, ['drafts', 'outreach'])
+  const { data: list, reload: reloadList } = useApi<any[]>('drafts:list', {}, ['drafts', 'outreach'])
   const d = list?.find((x) => x.id === id)
   const { data: company } = useApi<any>(d ? 'companies:get' : null, { id: d?.company_id }, ['analyses'])
   const [subject, setSubject] = useState('')
@@ -79,10 +81,18 @@ function Editor({ id, onChanged, openCompany, onSelect }: { id: number; onChange
   if (!d) return <Card><Loading /></Card>
   const locked = d.status === 'queued' || d.status === 'sent'
   const latest = company?.analyses?.find((a: any) => a.status === 'done')
-  const save = () => run(() => call('drafts:update', { id, patch: { subject: d.channel === 'email' ? subject : null, body, tone } }), 'Taslak kaydedildi').then(() => (setDirty(false), onChanged()))
+  // Liste yenilenmeden "düzenleme bitti" denirse editör eski metni geri yükler; önce liste yenilenir
+  const save = async () => {
+    const ok = await run(() => call('drafts:update', { id, patch: { subject: d.channel === 'email' ? subject : null, body, tone } }).then(() => true), 'Taslak kaydedildi')
+    if (!ok) return
+    await reloadList()
+    setDirty(false)
+    onChanged()
+  }
   const rewrite = async (action: string) => {
     if (dirty) await call('drafts:update', { id, patch: { subject: d.channel === 'email' ? subject : null, body, tone } })
     const r = await run(() => call<{ id: number; created: boolean }>('drafts:rewrite', { id, action }), (x) => (x.created ? 'Yeni kanal için ayrı taslak oluşturuldu' : 'Taslak güncellendi'))
+    await reloadList()
     setDirty(false)
     onChanged()
     if (r?.created) onSelect(r.id)

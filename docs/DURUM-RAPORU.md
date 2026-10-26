@@ -2,6 +2,13 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.3 — Taslak düzenleme düzeltmeleri
+
+- Stüdyo'da Kaydet sonrası metnin eski hâline dönmesi düzeltildi (kayıt veritabanına yapılıyordu, ekran eski listeyle yeniden doluyordu). ✅ e2e (gerçek arayüzde yaz → Kaydet → metin korunuyor).
+- Şablon, ret satırı ya da imza değişince elle düzenlenmemiş gönderilmemiş taslaklar kendiliğinden yenilenir; elle düzenlenenlere dokunulmaz (ret satırı kapatıldıysa yalnızca o satır çıkarılır, kuyruktaki mesajlardan da). Yeni sürüm ilk açılışta bir kez yeniler. ✅ e2e + kullanıcı veritabanında doğrulandı.
+- "Engel var" etiketi artık yalnızca onay dışındaki gerçek engellerde görünür; üzerine gelince nedenler listelenir.
+- Kullanıcı isteğiyle "Her mesaja ret bilgisi ekle" kapatıldı. Not: 6563 sayılı Kanun ticari elektronik iletilerde kolay ret imkânı sunulmasını ister; karar kullanıcıya aittir.
+
 ## 0.3.2 — Mesaja görsel ekleme
 
 Ayarlar → Mesaj gönderimi → Mesaj şablonları → **Mesaj görseli** (PNG/JPG, en fazla 5 MB; kanal bazında aç/kapat).

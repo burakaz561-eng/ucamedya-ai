@@ -164,9 +164,12 @@ export class OutreachService {
     }
   }
 
-  /** Gönderilmemiş (taslak / onaylı) taslakları güncel şablon veya yapay zekâ ile yeniden üretir. */
+  /**
+   * Gönderilmemiş (taslak / onaylı) taslakları güncel şablon veya yapay zekâ ile yeniden üretir.
+   * Kullanıcının elle düzenlediği taslaklar (generator = 'manual') korunur.
+   */
   async regenerateDrafts(): Promise<number> {
-    const rows = this.db.all<{ id: number; company_id: number; channel: Channel; tone: string | null }>("SELECT id, company_id, channel, tone FROM outreach_drafts WHERE status IN ('draft','approved')")
+    const rows = this.db.all<{ id: number; company_id: number; channel: Channel; tone: string | null }>("SELECT id, company_id, channel, tone FROM outreach_drafts WHERE status IN ('draft','approved') AND generator <> 'manual'")
     let n = 0
     for (const d of rows) {
       if (this.companies.isSuppressed(d.company_id)) continue
@@ -176,6 +179,22 @@ export class OutreachService {
       this.db.run("UPDATE outreach_drafts SET subject = ?, body = ?, generator = ?, used_findings = ?, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", out.subject, out.body, out.generator, JSON.stringify(out.usedFindings), d.id)
       this.writeDraftFile(d.company_id, d.channel, out.subject, out.body)
       n++
+    }
+    // Elle düzenlenmiş taslaklar yeniden yazılmaz; yalnızca ret satırı kapatıldıysa o satır çıkarılır
+    const o = this.settings.get().outreach
+    if (!o.includeOptOutLine && o.optOutText.trim()) {
+      const line = o.optOutText.trim()
+      for (const d of this.db.all<{ id: number; company_id: number; channel: Channel; subject: string | null; body: string }>("SELECT id, company_id, channel, subject, body FROM outreach_drafts WHERE status IN ('draft','approved') AND generator = 'manual' AND instr(body, ?) > 0", line)) {
+        const body = stripLine(d.body, line)
+        this.db.run("UPDATE outreach_drafts SET body = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", body, d.id)
+        this.writeDraftFile(d.company_id, d.channel, d.subject, body)
+        n++
+      }
+      // Kuyrukta bekleyen (henüz gönderilmemiş) mesajlardan da yalnızca ret satırı çıkarılır
+      for (const m of this.db.all<{ id: number; body: string }>("SELECT id, body FROM outreach_messages WHERE status IN ('queued','awaiting_confirm','preparing','blocked') AND instr(body, ?) > 0", line)) {
+        this.db.run('UPDATE outreach_messages SET body = ? WHERE id = ?', stripLine(m.body, line), m.id)
+      }
+      this.emitChange('outreach')
     }
     this.emitChange('drafts')
     return n
@@ -188,6 +207,7 @@ export class OutreachService {
     this.db.run("UPDATE outreach_drafts SET subject = COALESCE(?, subject), body = COALESCE(?, body), tone = COALESCE(?, tone), generator = CASE WHEN ? IS NOT NULL THEN 'manual' ELSE generator END, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", patch.subject ?? null, patch.body ?? null, patch.tone ?? null, patch.body ?? null, id)
     const nd = this.db.get<{ subject: string | null; body: string }>('SELECT subject, body FROM outreach_drafts WHERE id = ?', id)!
     this.writeDraftFile(d.company_id, d.channel, nd.subject, nd.body)
+    this.emitChange('drafts')
   }
 
   async rewrite(id: number, action: string) {
@@ -202,6 +222,7 @@ export class OutreachService {
     }
     this.db.run("UPDATE outreach_drafts SET subject = ?, body = ?, generator = 'ai', used_findings = ?, status = 'draft', approved_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", out.subject, out.body, JSON.stringify(out.usedFindings), id)
     this.writeDraftFile(d.company_id, d.channel, out.subject, out.body)
+    this.emitChange('drafts')
     return { id, created: false }
   }
 
@@ -678,3 +699,8 @@ export class OutreachService {
   }
 }
 
+
+/** Metinden bir satırı (ve önündeki boş satırları) çıkarır. */
+export function stripLine(body: string, line: string): string {
+  return body.split(line).join('').replace(/\n{3,}/g, '\n\n').trimEnd()
+}

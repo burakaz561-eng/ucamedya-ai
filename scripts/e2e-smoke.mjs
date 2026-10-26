@@ -193,6 +193,37 @@ await step('mesaj taslağı (AI yok → şablon), uygunluk engelleri, onay', asy
   await shot('08-mesaj-studyosu')
 })
 
+await step('stüdyo: düzenlenen taslak Kaydet sonrası korunur; şablon değişikliği elle düzenlenene dokunmaz', async () => {
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'AI Mesaj Stüdyosu' }).click()
+  await page.locator('.seg button', { hasText: 'Hepsi' }).click()
+  await page.waitForTimeout(800)
+  const ta = page.locator('textarea').first()
+  await ta.waitFor({ timeout: 10000 })
+  const yeni = 'Merhaba,\nBu metni Stüdyo\'da elle değiştirdim.\n\nİyi çalışmalar,'
+  await ta.fill(yeni)
+  await page.getByRole('button', { name: 'Kaydet' }).click()
+  await page.waitForTimeout(1500)
+  const shown = await ta.inputValue()
+  if (shown !== yeni) throw new Error('Kaydet sonrası editör eski metne döndü: ' + shown.slice(0, 60))
+  const list = await inv('drafts:list', { companyId })
+  const manual = list.find((x) => x.body === yeni)
+  if (!manual || manual.generator !== 'manual') throw new Error('Veritabanına kaydedilmedi')
+  // WhatsApp taslağı şablondan; şablon ve ret satırı değişince yalnızca o yenilenir
+  const wa = await inv('drafts:create', { companyId, channel: 'whatsapp', tone: 'professional' })
+  const cur = await inv('settings:get')
+  await inv('settings:update', { outreach: { ...cur.outreach, includeOptOutLine: false, templates: { ...cur.outreach.templates, whatsappBody: 'YENİ ŞABLON — {sirket}' } } })
+  const after = await inv('drafts:list', { companyId })
+  const w = after.find((x) => x.id === wa.id)
+  if (!w.body.startsWith('YENİ ŞABLON')) throw new Error('Şablon değişikliği taslağa yansımadı: ' + w.body.slice(0, 40))
+  if (w.body.includes(cur.outreach.optOutText.slice(0, 30))) throw new Error('Ret satırı kapatıldığı hâlde taslakta')
+  if (after.find((x) => x.id === manual.id).body !== yeni) throw new Error('Elle düzenlenen taslak ezildi')
+  const blocked = after.filter((x) => x.status === 'draft' && x.eligibility.reasons.length === 1 && /henüz onaylanmadı/.test(x.eligibility.reasons[0]))
+  await shot('08b-studyo-kaydet')
+  await inv('settings:update', { outreach: cur.outreach })
+  console.log(`   yalnızca onay bekleyen (engel sayılmayan) taslak: ${blocked.length}`)
+})
+
 await step('ret listesi: işaretlenen şirkete taslak oluşturulamıyor', async () => {
   const other = await inv('companies:create', { name: 'Ret Test Ltd', city: 'Kocaeli', email: 'info@ret-test.example' })
   await inv('companies:suppress', { id: other, reason: 'test' })

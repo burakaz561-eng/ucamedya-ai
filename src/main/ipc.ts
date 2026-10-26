@@ -59,7 +59,16 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
 
     // ---------------- Ayarlar ----------------
     'settings:get': () => s.settings.get(),
-    'settings:update': (p) => s.settings.update(z.record(z.string(), z.unknown()).parse(p)),
+    'settings:update': async (p) => {
+      const before = s.settings.get()
+      const after = s.settings.update(z.record(z.string(), z.unknown()).parse(p))
+      const sig = (x: typeof before) => JSON.stringify([x.outreach.templates, x.outreach.includeOptOutLine, x.outreach.optOutText, x.brand.signature, x.brand.name, x.brand.website])
+      if (sig(before) !== sig(after)) {
+        const n = await s.outreach.regenerateDrafts().catch(() => 0)
+        if (n) log('info', `Şablon/imza değişti: ${n} taslak yenilendi`)
+      }
+      return after
+    },
     'secrets:status': () => s.secrets.status(),
     'secrets:set': (p) => {
       const v = z.object({ name: z.enum(SECRET_NAMES), value: str(4000) }).parse(p)
