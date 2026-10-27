@@ -61,12 +61,15 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'settings:get': () => s.settings.get(),
     'settings:update': async (p) => {
       const before = s.settings.get()
+      const patchKeys = Object.keys((p ?? {}) as object)
+      if (s.team.active() && !s.team.isAdmin() && patchKeys.some((k) => ['brand', 'scoring', 'offers'].includes(k))) throw new Error('Paylaşılan ayarları (marka, puanlama, teklif) yalnızca admin değiştirebilir.')
       const after = s.settings.update(z.record(z.string(), z.unknown()).parse(p))
       const sig = (x: typeof before) => JSON.stringify([x.outreach.templates, x.outreach.includeOptOutLine, x.outreach.optOutText, x.brand.signature, x.brand.name, x.brand.website])
       if (sig(before) !== sig(after)) {
         const n = await s.outreach.regenerateDrafts().catch(() => 0)
         if (n) log('info', `Şablon/imza değişti: ${n} taslak yenilendi`)
       }
+      if (s.team.active() && s.team.isAdmin()) s.team.pushSharedSettings()
       return after
     },
     'secrets:status': () => s.secrets.status(),
@@ -265,6 +268,24 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'companies:delete': (p) => s.companies.hardDelete(id.parse(p?.id)),
     'companies:merge': (p) => s.companies.merge(id.parse(p?.keep), id.parse(p?.drop)),
     'companies:duplicates': () => s.companies.duplicates(),
+    // ---------------- Ekip ----------------
+    'team:config': () => s.team.config(),
+    'team:serverStatus': (p) => s.team.serverStatus(str(300).min(4).parse(p?.server)),
+    'team:bootstrap': (p) => {
+      const v = z.object({ server: str(300).min(4), key: optStr(100), useLeadsKey: z.boolean().optional(), name: str(120).min(1), email: str(190).email(), password: str(200).min(8), uploadExisting: z.boolean() }).parse(p)
+      const key = v.useLeadsKey ? s.secrets.get('website_leads_key') : v.key
+      if (!key) throw new Error('Bağlantı anahtarı gerekli (WordPress → Ayarlar → UcaMedya Bağlantı).')
+      return s.team.bootstrap({ server: v.server, key, name: v.name, email: v.email, password: v.password, uploadExisting: v.uploadExisting })
+    },
+    'team:login': (p) => s.team.login(z.object({ server: str(300).min(4), email: str(190).email(), password: str(200).min(1), mode: z.enum(['merge', 'replace', 'keep']).optional() }).parse(p)),
+    'team:logout': () => s.team.logout(),
+    'team:disable': () => s.team.disable(),
+    'team:syncNow': () => s.team.syncNow(),
+    'team:check': () => s.team.check(),
+    'team:users': () => s.team.users(),
+    'team:createUser': (p) => s.team.createUser(z.object({ email: str(190).email(), name: str(120).min(1), password: str(200).min(8), role: z.enum(['admin', 'member']) }).parse(p)),
+    'team:updateUser': (p) => s.team.updateUser(id.parse(p?.id), z.object({ name: optStr(120).transform((x) => x ?? undefined), role: z.enum(['admin', 'member']).optional(), active: z.boolean().optional(), password: optStr(200).transform((x) => x || undefined) }).parse(p?.patch ?? {})),
+    'team:changePassword': (p) => s.team.changePassword(str(200).min(1).parse(p?.current), str(200).min(8).parse(p?.next)),
     // ---------------- Web sitesi talepleri ----------------
     'leads:config': () => s.leads.config(),
     'leads:saveConfig': (p) => s.leads.saveConfig(z.object({ siteUrl: optStr(300), enabled: z.boolean().optional(), syncMinutes: z.number().optional(), key: optStr(100) }).parse(p ?? {}) as Parameters<AppServices['leads']['saveConfig']>[0]),
@@ -598,7 +619,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     })
   }
 
-  const LOCK_FREE = new Set(['app:info', 'lock:status', 'lock:unlock', 'settings:get', 'brand:logoData'])
+  const LOCK_FREE = new Set(['app:info', 'lock:status', 'lock:unlock', 'settings:get', 'brand:logoData', 'team:config', 'team:login', 'team:check', 'team:serverStatus', 'team:disable'])
 
   ipcMain.handle('uca:invoke', async (event, channel: unknown, payload: unknown) => {
     try {

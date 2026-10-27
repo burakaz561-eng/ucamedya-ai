@@ -26,6 +26,8 @@ export interface AppSettings {
   offers: { validityDays: number; defaultPaymentTerms: string; defaultNextSteps: string }
   /** UcaMedya Bağlantı WordPress eklentisi (web sitesi talepleri) */
   website: { siteUrl: string; enabled: boolean; syncMinutes: number }
+  /** Ekip modu (ortak sunucu): oturum anahtarı güvenli depoda, şifre hiçbir yerde tutulmaz */
+  team: { enabled: boolean; server: string; userId: number; email: string; name: string; role: 'admin' | 'member' }
   analysis: { concurrency: number; pagespeed: boolean; maxPages: number; screenshotMaxWidth: number; respectRobots: boolean; timeoutSec: number }
   scoring: {
     weights: { improvementNeed: number; serviceFit: number; activeSignals: number; contactValidity: number; opportunitySignals: number }

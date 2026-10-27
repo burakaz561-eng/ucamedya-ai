@@ -56,6 +56,8 @@ export function normalizeSiteUrl(raw: string): string {
 }
 
 export class WebsiteLeads {
+  claimer: { active: () => boolean; claim: (key: string) => Promise<{ ok: boolean; done: boolean; by: string | null }> } | null = null
+
   constructor(
     private db: Db,
     private companies: CompanyService,
@@ -138,6 +140,15 @@ export class WebsiteLeads {
         const ack: number[] = []
         const themeAck: number[] = []
         for (const it of r.items) {
+          // Ekip modunda talebi yalnızca bir bilgisayar içeri alır (diğeri kaydı eşitlemeyle görür)
+          if (this.claimer?.active()) {
+            const lock = await this.claimer.claim(`lead:${site}#${it.source === 'theme' ? 'theme-' : ''}${it.id}`).catch(() => null)
+            if (!lock) continue
+            if (!lock.ok) {
+              ;(it.source === 'theme' ? themeAck : ack).push(it.id)
+              continue
+            }
+          }
           const res = this.db.tx(() => this.importItem(site, it))
           ;(it.source === 'theme' ? themeAck : ack).push(it.id)
           if (res.duplicate) continue

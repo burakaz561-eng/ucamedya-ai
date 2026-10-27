@@ -81,6 +81,11 @@ function restartWithDatabase(file?: string) {
 }
 
 function startSchedulers() {
+  // Ekip modu: oturum varsa eşitleme döngüsü başlar (çevrimdışıysa önbellekle çalışılır)
+  if (services.team.active()) {
+    services.team.start()
+    void services.team.check().then(() => services.team.syncNow())
+  }
   timers.push(setTimeout(() => void services.oneTimeDraftRefresh(), 5_000))
   // Hatırlatıcılar (dakikada bir)
   timers.push(

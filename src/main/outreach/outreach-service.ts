@@ -440,7 +440,38 @@ export class OutreachService {
     }
   }
 
+  /** Ekip modunda gönderim kilidi (aynı mesajı iki bilgisayarın göndermesini önler) */
+  claimer: { active: () => boolean; claim: (key: string) => Promise<{ ok: boolean; done: boolean; by: string | null }>; release: (key: string, done: boolean) => Promise<void> } | null = null
+
   private async processMessage(id: number) {
+    const c = this.claimer
+    if (!c || !c.active()) return this.processMessageInner(id)
+    const row = this.db.get<{ idempotency_key: string; status: string }>('SELECT idempotency_key, status FROM outreach_messages WHERE id = ?', id)
+    if (!row || row.status !== 'queued') return
+    const key = `msg:${row.idempotency_key}`
+    let lock: { ok: boolean; done: boolean; by: string | null }
+    try {
+      lock = await c.claim(key)
+    } catch (e) {
+      // Sunucuya ulaşılamıyorsa çift gönderim riskine girilmez
+      this.db.run("UPDATE outreach_messages SET error = ? WHERE id = ?", `Ekip sunucusuna ulaşılamadı; çift gönderimi önlemek için bekletildi (${(e as Error).message})`, id)
+      this.pauseQueue((this.db.get<{ channel: Channel }>('SELECT channel FROM outreach_messages WHERE id = ?', id)?.channel ?? 'email') as Channel)
+      return
+    }
+    if (!lock.ok) {
+      this.db.run("UPDATE outreach_messages SET status = 'cancelled', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", lock.done ? `Bu mesaj ekipten ${lock.by ?? 'başka biri'} tarafından zaten gönderildi.` : `Bu mesajı şu an ${lock.by ?? 'başka bir kullanıcı'} gönderiyor.`, id)
+      this.emitChange('outreach')
+      return
+    }
+    try {
+      await this.processMessageInner(id)
+    } finally {
+      const st = this.db.get<{ status: string }>('SELECT status FROM outreach_messages WHERE id = ?', id)?.status ?? ''
+      await c.release(key, ['sent', 'delivered', 'read', 'test_sent', 'manual_opened', 'prepared'].includes(st))
+    }
+  }
+
+  private async processMessageInner(id: number) {
     const m = this.db.get<{ id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string; test_mode: number; status: string }>('SELECT * FROM outreach_messages WHERE id = ?', id)
     if (!m || m.status !== 'queued') return
     // Devam ettirmede yeniden kontrol: ret listesi / izin değişmiş olabilir

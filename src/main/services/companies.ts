@@ -13,7 +13,11 @@ export class CompanyService {
     private files: FileStore
   ) {}
 
+  /** Ekip modunda işlemi yapan kullanıcının adı (günlükte "Kullanıcı" yerine yazılır) */
+  actorName: () => string | null = () => null
+
   log(companyId: number | null, action: string, detail?: string, actor = 'user', entity?: string, entityId?: number) {
+    if (actor === 'user') actor = this.actorName() ?? 'user'
     this.db.run('INSERT INTO activity_logs(company_id, action, detail, actor, entity, entity_id) VALUES (?,?,?,?,?,?)', companyId, action, detail ?? null, actor, entity ?? null, entityId ?? null)
   }
 

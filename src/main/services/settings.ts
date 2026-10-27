@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   search: { provider: 'google_browser', maxQueriesPerResearch: 6, pagesPerQuery: 3 },
   automation: { browser: 'chrome', autoStart: true, previewIntervalSec: 2 },
   website: { siteUrl: '', enabled: false, syncMinutes: 5 },
+  team: { enabled: false, server: '', userId: 0, email: '', name: '', role: 'member' },
   offers: { validityDays: 30, defaultPaymentTerms: '%50 sipariş onayında, %50 teslimde.', defaultNextSteps: '1. Teklifi birlikte gözden geçirmek için kısa bir görüşme\n2. Kapsamın ve önceliklerin netleştirilmesi\n3. Onay sonrası iş planı ve başlangıç tarihi' },
   analysis: { concurrency: 2, pagespeed: true, maxPages: 4, screenshotMaxWidth: 1440, respectRobots: true, timeoutSec: 30 },
   scoring: { weights: { ...DEFAULT_SCORING_WEIGHTS }, categoryWeights: { ...DEFAULT_CATEGORY_WEIGHTS }, priorityThreshold: 70, highFitThreshold: 55 },

@@ -28,6 +28,7 @@ import { OutreachService } from '../outreach/outreach-service'
 import { WebsiteLeads } from '../integrations/website-leads'
 import { ConceptService } from '../concepts/concept-service'
 import { Assistant } from '../assistant/assistant'
+import { TeamService } from '../sync/team-service'
 import { OfferService } from './offers'
 import { StatsService } from './stats'
 import { BackupService } from './backup'
@@ -56,6 +57,7 @@ export class AppServices {
   readonly leads: WebsiteLeads
   readonly concepts: ConceptService
   readonly assistant: Assistant
+  readonly team: TeamService
   readonly offers: OfferService
   readonly stats: StatsService
   readonly backups: BackupService
@@ -80,7 +82,12 @@ export class AppServices {
     this.files = new FileStore(this.db, () => this.settings.get().dataDir || join(paths.documents, 'UcaMedya AI Data'))
     this.companies = new CompanyService(this.db, this.files)
     this.http = new PoliteFetcher(fetch, 1500)
-    const change = (scope: string, id?: number) => this.emit('data-changed', { scope, id })
+    this.team = new TeamService(this.db, this.settings, this.secrets, () => this.settings.get().dataDir || join(paths.documents, 'UcaMedya AI Data'), (scope) => this.emit('data-changed', { scope }), (m) => log('info', m))
+    this.companies.actorName = () => this.team.user()?.name ?? null
+    const change = (scope: string, id?: number) => {
+      this.emit('data-changed', { scope, id })
+      this.team.nudge()
+    }
     this.agent = new AgentBrowser(paths.userData, (ev: AgentEvent) => this.emit('agent', ev), (m) => log('info', m))
     this.google = new GoogleBrowserSearch(this.agent)
     this.wa = new WhatsAppWeb(this.agent)
@@ -90,6 +97,9 @@ export class AppServices {
     this.jobs = new JobEngine(this.db, () => this.settings.get().analysis.concurrency + 1, (ev: JobEvent) => this.emit('job', ev))
     this.outreach = new OutreachService(this.db, this.companies, this.settings, this.secrets, this.files, () => this.ai(), change)
     this.leads = new WebsiteLeads(this.db, this.companies, this.settings, this.secrets)
+    const claimer = { active: () => this.team.active(), claim: (k: string) => this.team.claim(k), release: (k: string, done: boolean) => this.team.release(k, done) }
+    this.outreach.claimer = claimer
+    this.leads.claimer = claimer
     this.concepts = new ConceptService(this.db, this.files, this.companies, this.settings)
     this.assistant = new Assistant(this.db, () => (this.settings.get().ai.enabled ? this.ai() : null))
     this.offers = new OfferService(this.db, this.files, this.companies, this.settings, change)
