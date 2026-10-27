@@ -20,6 +20,7 @@ function uca_bag_install_table() {
   PRIMARY KEY  (id),
   KEY synced_at (synced_at)
 ) {$c};");
+    if (function_exists('uca_team_install')) uca_team_install();
     update_option('uca_bag_db', UCA_BAG_VERSION, false);
 }
 

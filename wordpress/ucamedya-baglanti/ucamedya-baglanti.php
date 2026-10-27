@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: UcaMedya Bağlantı — Teklif Formu, Ön Analiz ve Masaüstü Entegrasyonu
- * Description: Hizmete göre soru değiştiren kısa teklif formu ([ucamedya_teklif_formu]), ücretsiz web sitesi ön analiz aracı ([ucamedya_on_analiz]) ve gelen talepleri UcaMedya AI masaüstü uygulamasına güvenli aktaran bağlantı.
- * Version: 1.1.0
+ * Description: Teklif formu ([ucamedya_teklif_formu]), ücretsiz ön analiz ([ucamedya_on_analiz]), gelen talepleri UcaMedya AI'a aktarma ve ekip sunucusu (kullanıcılar, ortak veritabanı, dosya eşitleme).
+ * Version: 2.0.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: UcaMedya
@@ -12,7 +12,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('UCA_BAG_VERSION', '1.1.0');
+define('UCA_BAG_VERSION', '2.0.0');
 define('UCA_BAG_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/services.php';
@@ -20,6 +20,7 @@ require_once __DIR__ . '/includes/store.php';
 require_once __DIR__ . '/includes/safe-fetch.php';
 require_once __DIR__ . '/includes/audit.php';
 require_once __DIR__ . '/includes/theme-messages.php';
+require_once __DIR__ . '/includes/team.php';
 require_once __DIR__ . '/includes/forms.php';
 require_once __DIR__ . '/includes/rest.php';
 require_once __DIR__ . '/includes/admin.php';

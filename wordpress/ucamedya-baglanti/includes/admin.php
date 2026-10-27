@@ -63,6 +63,25 @@ function uca_bag_admin_page() {
             <?php submit_button('Kaydet'); ?>
         </form>
 
+        <h2>Ekip sunucusu (UcaMedya AI)</h2>
+        <?php
+        $tu = uca_team_t('users');
+        $users = $wpdb->get_results("SELECT email, name, role, active, last_login FROM {$tu} ORDER BY id", ARRAY_A);
+        $recs = (int) $wpdb->get_var('SELECT COUNT(*) FROM ' . uca_team_t('records') . ' WHERE deleted = 0');
+        $fsz = (int) $wpdb->get_var('SELECT COALESCE(SUM(fsize),0) FROM ' . uca_team_t('files'));
+        ?>
+        <p>Masaüstü uygulamaları bu siteyi ortak veritabanı olarak kullanır. Kurulum ve kullanıcı ekleme uygulamanın içinden yapılır (Ayarlar → Ekip). Veriler bu sunucudaki veritabanında, dosyalar doğrudan erişime kapalı bir klasörde durur.</p>
+        <table class="form-table" role="presentation">
+            <tr><th>Durum</th><td><?php echo $users ? '<b>Kurulu</b>' : 'Henüz kurulmadı — uygulamada "Ekip sunucusunu kur" ile ilk admin oluşturulur.'; ?></td></tr>
+            <tr><th>Eşitlenen kayıt</th><td><?php echo (int) $recs; ?></td></tr>
+            <tr><th>Dosya alanı</th><td><?php echo esc_html(size_format($fsz)); ?></td></tr>
+        </table>
+        <?php if ($users) { ?>
+        <table class="widefat striped" style="max-width:820px"><thead><tr><th>Kullanıcı</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş (UTC)</th></tr></thead><tbody>
+        <?php foreach ($users as $x) printf('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>', esc_html($x['name']), esc_html($x['email']), $x['role'] === 'admin' ? 'Admin' : 'Üye', $x['active'] ? 'Aktif' : 'Devre dışı', esc_html($x['last_login'] ?: '—')); ?>
+        </tbody></table>
+        <?php } ?>
+
         <h2>Kısa kodlar</h2>
         <p><code>[ucamedya_teklif_formu]</code> — hizmete göre soru değiştiren teklif formu. Belirli bir hizmetle açmak için: <code>[ucamedya_teklif_formu hizmet="seo"]</code> (web_design, ecommerce, seo, graphic, identity, social, video, maintenance) ya da sayfa adresine <code>?hizmet=seo</code>.</p>
         <p><code>[ucamedya_on_analiz]</code> — ücretsiz web sitesi ön analiz aracı.</p>
