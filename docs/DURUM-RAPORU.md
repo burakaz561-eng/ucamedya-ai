@@ -2,6 +2,11 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.7 — Toplu kuyruğa ekle, daha hızlı görsel yapıştırma
+
+- E-posta / WhatsApp ekranlarında "Toplu kuyruğa ekle": seçim gerekmeden kanaldaki onaylı (+ isteğe bağlı onay bekleyen) taslaklar, engelliler hariç, isteğe bağlı üst sınırla tek seferde kuyruğa. ✅ e2e (pencere).
+- WhatsApp görsel yapıştırma: araç sohbet açılmadan başlatılır (PowerShell + derleme süresi örtüşür), sabit 2,5 sn bekleme kaldırıldı; en az 1,3 sn sonra WhatsApp öne gelir gelmez yapıştırır. Güvenlik kontrolü aynı. 🟡 yeni zamanlama kullanıcı ekranında denenmedi.
+
 ## 0.3.6 — Görsel mesajla birlikte (WhatsApp otomatik yapıştırma, e-posta ek doğrulama)
 
 - WhatsApp masaüstü: sohbet açılınca görsel panoya kopyalanır ve uygulama WhatsApp penceresine Ctrl+V (Mac: Cmd+V) gönderir; WhatsApp görsel önizlemesini açar, metin görselin açıklamasına geçer, Enter kullanıcıda. Güvenlik: tuş yalnızca öndeki pencerenin WhatsApp masaüstü olduğu doğrulanırsa gönderilir (tarayıcılar hariç); değilse hiçbir tuşa basılmaz ve onay penceresi elle yapıştırmayı söyler. Windows odak kilidi için geçici iş parçacığı bağlama; betik EncodedCommand ile (tırnak bozulması yok). Ayar: "Görseli sohbete otomatik yapıştır". ✅ kullanıcının bilgisayarında gerçek WhatsApp'ta doğrulandı (önizleme + açıklama, gönderilmedi). 🟡 Mac'te denenmedi (Erişilebilirlik izni gerekir).

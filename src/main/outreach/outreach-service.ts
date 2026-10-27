@@ -11,7 +11,7 @@
 
 import { shell } from 'electron'
 import { copyImageToClipboard } from './image-clipboard'
-import { pasteIntoWhatsApp } from './whatsapp-paste'
+import { startPasteIntoWhatsApp } from './whatsapp-paste'
 import { imageDataUri, imageFor } from './message-image'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
@@ -533,9 +533,11 @@ export class OutreachService {
       // Pano PNG olarak yazılır (JPG de PNG'ye çevrilir); WhatsApp'a Ctrl/Cmd+V ile yapıştırılır
       copied = await copyImageToClipboard(img).then(() => true, (e) => (this.companies.log(m.company_id, 'Görsel panoya kopyalanamadı', (e as Error).message, 'system'), false))
     }
+    // Görsel otomatik yapıştırılır: araç sohbet açılmadan başlatılır (hazırlık süresi örtüşür); WhatsApp görsel önizlemesini açar,
+    // metin görselin açıklamasına geçer; Enter kullanıcıda
+    const pasting = img && copied && s.outreach.image?.autoPaste !== false ? startPasteIntoWhatsApp() : null
     await shell.openExternal(whatsappDesktopUrl(to, m.body))
-    // Görsel otomatik yapıştırılır: WhatsApp görsel önizlemesini açar, metin görselin açıklamasına geçer; Enter kullanıcıda
-    const paste = img && copied && s.outreach.image?.autoPaste !== false ? await pasteIntoWhatsApp() : null
+    const paste = pasting ? await pasting : null
     if (paste && !paste.ok) this.companies.log(m.company_id, 'Görsel WhatsApp\'a otomatik yapıştırılamadı', paste.reason, 'system', 'message', m.id)
     const pasteKey = process.platform === 'darwin' ? 'Cmd+V' : 'Ctrl+V'
     const imageNote = !img ? null : paste?.ok ? 'Görsel sohbete yapıştırıldı: WhatsApp\'ta görsel önizlemesi açıldı ve metin görselin açıklamasına geçti. Kontrol edip Enter ile gönderin.' : `Görsel panoya kopyalandı${paste ? ` ama otomatik yapıştırılamadı (${paste.reason})` : ''}. WhatsApp'ta mesaj kutusuna tıklayıp ${pasteKey} yapın; görsel ekranında Enter ile gönderin.`

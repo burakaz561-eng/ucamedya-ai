@@ -256,6 +256,16 @@ await step('e-posta ekranı: seçileni sil', async () => {
   await shot('08d-eposta-sil')
 })
 
+await step('e-posta ekranı: toplu kuyruğa ekle penceresi', async () => {
+  await ensureShown()
+  await page.locator('.nav-item', { hasText: 'E-posta Kampanyaları' }).click()
+  await page.waitForTimeout(800)
+  await page.getByRole('button', { name: 'Toplu kuyruğa ekle' }).click()
+  await page.getByText('Onay bekleyenleri de onayla ve ekle').waitFor({ timeout: 5000 })
+  await shot('08e-toplu-kuyruk')
+  await page.getByRole('button', { name: 'Vazgeç' }).click()
+})
+
 await step('ret listesi: işaretlenen şirkete taslak oluşturulamıyor', async () => {
   const other = await inv('companies:create', { name: 'Ret Test Ltd', city: 'Kocaeli', email: 'info@ret-test.example' })
   await inv('companies:suppress', { id: other, reason: 'test' })

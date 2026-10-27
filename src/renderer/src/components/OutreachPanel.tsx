@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Sparkles, Eye, ListPlus, Play, Pause, Square, AlertTriangle, Download, CheckCheck, ExternalLink, RotateCcw, Trash2, Undo2 } from 'lucide-react'
 import { call, useApi } from '../lib/api'
 import { useNav } from '../lib/nav'
-import { Badge, Btn, Callout, Card, Modal, Seg, useAction, useConfirm } from './ui'
+import { Badge, Btn, Callout, Card, Modal, Seg, useAction, useConfirm, Field } from './ui'
 import { DataTable } from './DataTable'
 import { DRAFT_STATUS, MSG_STATUS, fmtDate } from '../lib/format'
 
@@ -63,6 +63,26 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
     const n = await run(() => call<number>('outreach:dequeue', { ids: idsToRemove }), (x) => `${x} mesaj kuyruktan çıkarıldı`)
     if (n != null) setMsel(new Set())
   }
+  // Toplu kuyruğa ekle: seçim gerekmeden kanaldaki tüm uygun taslaklar
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkPending, setBulkPending] = useState(true)
+  const [bulkLimit, setBulkLimit] = useState('')
+  const realBlock = (d: any) => (d.eligibility?.reasons ?? []).filter((x: string) => !/henüz onaylanmadı/.test(x)).length > 0
+  const poolApproved = (drafts ?? []).filter((d) => d.status === 'approved' && !realBlock(d))
+  const poolPending = (drafts ?? []).filter((d) => d.status === 'draft' && !realBlock(d))
+  const poolBlocked = (drafts ?? []).filter((d) => ['approved', 'draft'].includes(d.status) && realBlock(d))
+  const bulkRows = [...poolApproved, ...(bulkPending ? poolPending : [])].slice(0, Number(bulkLimit) > 0 ? Number(bulkLimit) : undefined)
+  const bulkEnqueue = async () => {
+    if (!bulkRows.length) return
+    const pend = bulkRows.filter((d) => d.status === 'draft')
+    if (pend.length) await call('drafts:setStatus', { ids: pend.map((d) => d.id), status: 'approved' })
+    const r = await run(() => call<any>('outreach:enqueue', { ids: bulkRows.map((d) => d.id) }))
+    if (r) {
+      setBulkOpen(false)
+      if (r.skipped.length) setErrors(true)
+      await run(async () => r, () => `${r.queued} mesaj kuyruğa eklendi${r.skipped.length ? `, ${r.skipped.length} mesaj kontrollerden geçemedi` : ''}`)
+    }
+  }
   const start = async () => {
     if (!testMode && !(await ask(`${label} kuyruğu başlatılsın mı?`, <>Kuyruktaki {qs?.counts?.queued ?? 0} mesaj, {channel === 'email' ? 'e-posta hesabınız' : 'WhatsApp Business hesabınız'} üzerinden sırayla <b>gerçek alıcılara</b> gönderilecek. Her gönderimden önce ret listesi ve izinler yeniden kontrol edilir. İstediğiniz an duraklatabilirsiniz.</>, { confirm: 'Gönderimi başlat' }))) return
     run(() => call('outreach:start', { channel }), 'Kuyruk başlatıldı')
@@ -74,6 +94,7 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
       {web && <Callout tone="info">{channel === 'email' ? (q?.emailTransport === 'webmail' ? 'Webmail (tarayıcı)' : 'Gmail (tarayıcı)') : qs?.mode === 'whatsapp_desktop' ? 'WhatsApp masaüstü uygulaması — gönderme sizde' : 'WhatsApp Web (tarayıcı)'} · <b>{modeLabel}</b>. Gönderim sırasında tarayıcıyı Canlı Kontrol Merkezi'nden izleyebilirsiniz.</Callout>}
       <Card>
         <div className="row wrap" style={{ gap: 8 }}>
+          <Btn variant="primary" icon={<ListPlus />} disabled={busy || !(drafts ?? []).some((d) => ['approved', 'draft'].includes(d.status))} onClick={() => setBulkOpen(true)}>Toplu kuyruğa ekle</Btn>
           <Btn icon={<Sparkles />} disabled={!sel.size} title="Seçili şirketler için yeni taslak üretir" onClick={() => run(() => call('drafts:createBulk', { companyIds: [...new Set(selected.map((d) => d.company_id))], channels: [channel], tone: 'professional' }), 'Taslaklar hazırlanıyor')}>Taslakları oluştur</Btn>
           <Btn icon={<Eye />} disabled={!sel.size} onClick={() => setReview(true)}>Seçilenleri incele ({sel.size})</Btn>
           <Btn icon={<ListPlus />} disabled={!sel.size || busy} onClick={enqueue}>Seçilenleri kuyruğa ekle</Btn>
@@ -150,6 +171,26 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
           />
         )}
       </Card>
+
+      {bulkOpen && (
+        <Modal title={`Toplu kuyruğa ekle — ${label}`} sub="Kanaldaki gönderilmemiş taslaklar tek seferde kuyruğa alınır. Kuyruk siz başlatana kadar çalışmaz." onClose={() => setBulkOpen(false)} footer={<>
+          <Btn onClick={() => setBulkOpen(false)}>Vazgeç</Btn>
+          <Btn variant="primary" icon={<ListPlus />} disabled={busy || !bulkRows.length} onClick={bulkEnqueue}>{bulkRows.length} taslağı kuyruğa ekle</Btn>
+        </>}>
+          <div className="col" style={{ gap: 12 }}>
+            <div className="kv">
+              <div>Onaylı taslak</div><div><b>{poolApproved.length}</b></div>
+              <div>Onay bekleyen taslak</div><div><b>{poolPending.length}</b></div>
+              <div>Gönderim engeli olan</div><div><b>{poolBlocked.length}</b> <span className="tiny muted">(eklenmez — ör. geçerli alıcı yok, ret listesinde)</span></div>
+            </div>
+            <label className="check"><input type="checkbox" checked={bulkPending} onChange={(e) => setBulkPending(e.target.checked)} /><div><b>Onay bekleyenleri de onayla ve ekle</b><div className="small muted">Kapalıysa yalnızca daha önce onayladığınız taslaklar eklenir.</div></div></label>
+            <Field label="En fazla kaç taslak eklensin? (boş = hepsi)" hint={channel === 'whatsapp' ? 'Hesap kısıtlaması riskini azaltmak için günlük az sayıda (ör. 20) önerilir.' : 'Günlük gönderim sınırınızı göz önünde bulundurun.'}>
+              <input className="input" type="number" min={1} value={bulkLimit} onChange={(e) => setBulkLimit(e.target.value)} placeholder="hepsi" style={{ maxWidth: 160 }} />
+            </Field>
+            {testMode ? <Callout tone="warn">Test modu açık: mesajlar test alıcınıza gider.</Callout> : <Callout tone="brand">Canlı mod: kuyruğu başlattığınızda mesajlar gerçek alıcılara gider{q?.sendMode === 'confirm' ? '; her mesaj için yine onay pencereniz açılır' : ''}.</Callout>}
+          </div>
+        </Modal>
+      )}
 
       {review && (
         <Modal title={`Seçilen ${selected.length} taslak`} sub="İnceleyip toplu onaylayabilir veya reddedebilirsiniz." onClose={() => setReview(false)} size="wide" footer={<>
