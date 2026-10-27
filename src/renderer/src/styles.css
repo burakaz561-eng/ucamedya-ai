@@ -327,3 +327,12 @@ table.dt td.wrap { white-space: normal; }
 
 /* Stüdyo toplu işlem çubuğu */
 .studio-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 1; }
+
+/* Ekip durumu */
+.team-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-elev); color: var(--ink); cursor: pointer; }
+.team-chip:hover { border-color: var(--brand); }
+.team-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mute); }
+.team-chip .dot.success { background: #2e9e5b; }
+.team-chip .dot.brand { background: var(--brand); }
+.team-chip .dot.warning { background: #d98a00; }
+.team-chip .dot.danger { background: var(--danger); }

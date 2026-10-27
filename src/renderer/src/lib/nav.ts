@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 
 export type PageKey =
   | 'dashboard' | 'control' | 'finder' | 'research' | 'analysis' | 'companies' | 'communication' | 'email' | 'whatsapp' | 'studio'
-  | 'offers' | 'followup' | 'reports' | 'files' | 'integrations' | 'automations' | 'settings' | 'pipeline' | 'leads'
+  | 'offers' | 'followup' | 'reports' | 'files' | 'integrations' | 'automations' | 'settings' | 'pipeline' | 'leads' | 'team'
 
 export interface Route {
   page: PageKey

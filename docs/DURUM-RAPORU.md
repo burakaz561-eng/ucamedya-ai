@@ -2,6 +2,23 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.0 — Ekip modu: giriş, kullanıcılar, ortak veritabanı
+
+Ayrıntı ve kurulum: `docs/EKIP-SISTEMI.md`.
+
+- **Sunucu:** ucamedya.com.tr üzerindeki UcaMedya Bağlantı eklentisi 2.0.
+- **Yetkiler:** admin / üye; kullanıcı ekleme, devre dışı bırakma, şifre sıfırlama.
+- **Giriş:** giriş ekranı ve oturum (30 gün).
+- **Eşitleme:** tüm müşteri verileri, dosyalar dahil, çevrimdışıyken de çalışır.
+- **Çakışma:** alan düzeyinde birleştirme.
+- **Çift gönderim:** gönderim ve talep kilidiyle engellenir.
+- **Kim yaptı:** günlükte kullanıcı adı yazar.
+- **Kurulum:** ilk kurulum sitenin bağlantı anahtarıyla yapılır.
+- **Yeni bilgisayar:** "ekibe ekle / buradakileri bırak" seçeneği sunulur.
+- **Erişilebilirlik:** form etiketleri alanlara bağlandı.
+
+Kullanıcı veritabanı v3→v4: yedek alındı, 97 şirket ve tüm kayıtlar uid aldı. Ekip modu kurulana kadar kapalı.
+
 ## 0.3.7 — Toplu kuyruğa ekle, daha hızlı görsel yapıştırma
 
 - E-posta / WhatsApp ekranlarında "Toplu kuyruğa ekle": seçim gerekmeden kanaldaki onaylı (+ isteğe bağlı onay bekleyen) taslaklar, engelliler hariç, isteğe bağlı üst sınırla tek seferde kuyruğa. ✅ e2e (pencere).

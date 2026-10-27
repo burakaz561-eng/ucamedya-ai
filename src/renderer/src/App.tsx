@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Radar, Factory, ScanSearch, Users, MessagesSquare, Mail, MessageCircle, Sparkles, FileSignature, CalendarClock,
-  BarChart3, FolderOpen, Plug, Workflow, KanbanSquare, Inbox, Settings as SettingsIcon, MonitorPlay, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
+  BarChart3, FolderOpen, Plug, Workflow, KanbanSquare, Inbox, UsersRound, Cloud, CloudOff, Settings as SettingsIcon, MonitorPlay, PanelLeftClose, PanelLeftOpen, Search, Bell, Moon, Sun, Lock
 } from 'lucide-react'
 import { call, useApi, useJobEvents } from './lib/api'
 import { NavCtx, useNav, type PageKey, type Route } from './lib/nav'
@@ -14,6 +14,7 @@ import { Wizard } from './pages/Wizard'
 import { CompanyDrawer } from './pages/CompanyDrawer'
 import { SendConfirm, AgentNeedsUser } from './components/SendConfirm'
 import { AssistantLauncher } from './components/AssistantPanel'
+import { TeamLogin } from './pages/TeamLogin'
 import type { AppSettings } from '@shared/types'
 import type { RobotMood } from './robot/robot-model'
 import logoDark from './assets/uca-medya-logo-dark.svg'
@@ -33,6 +34,7 @@ const Offers = lazy(() => import('./pages/Offers'))
 const FollowUp = lazy(() => import('./pages/FollowUp'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Leads = lazy(() => import('./pages/Leads'))
+const Team = lazy(() => import('./pages/Team'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Files = lazy(() => import('./pages/Files'))
 const Integrations = lazy(() => import('./pages/Integrations'))
@@ -58,10 +60,11 @@ export const NAV: { key: PageKey; label: string; icon: typeof Radar; group?: str
   { key: 'files', label: 'Dosya Merkezi', icon: FolderOpen, group: 'Sistem' },
   { key: 'integrations', label: 'Entegrasyonlar', icon: Plug },
   { key: 'automations', label: 'Görevler ve Otomasyonlar', icon: Workflow },
+  { key: 'team', label: 'Ekip ve Kullanıcılar', icon: UsersRound },
   { key: 'settings', label: 'Uygulama Ayarları', icon: SettingsIcon }
 ]
 
-type Phase = 'splash' | 'lock' | 'wizard' | 'app'
+type Phase = 'splash' | 'lock' | 'login' | 'wizard' | 'app'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -74,11 +77,19 @@ export default function App() {
     const dark = settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
   }, [settings])
+  const [teamCfg, setTeamCfg] = useState<{ enabled: boolean; loggedIn: boolean; server: string; email: string; localCompanies: number } | null>(null)
+  // Ekip modu açık ama oturum yoksa (çıkış yapılmış / süresi dolmuş) giriş ekranı açılır
+  const afterUnlock = useCallback(async () => {
+    const t = await call<{ enabled: boolean; loggedIn: boolean; server: string; email: string; localCompanies: number }>('team:config').catch(() => null)
+    setTeamCfg(t)
+    if (t?.enabled && !t.loggedIn) return setPhase('login')
+    setPhase(settings?.setupCompleted ? 'app' : 'wizard')
+  }, [settings])
   const afterSplash = useCallback(async () => {
     const lock = await call<{ enabled: boolean; unlocked: boolean }>('lock:status').catch(() => ({ enabled: false, unlocked: true }))
     if (lock.enabled && !lock.unlocked) return setPhase('lock')
-    setPhase(settings?.setupCompleted ? 'app' : 'wizard')
-  }, [settings])
+    await afterUnlock()
+  }, [afterUnlock])
 
   if (!settings) return <div className="splash" />
   const prefs = { animations: settings.robotAnimations, light: settings.lightMode }
@@ -86,7 +97,8 @@ export default function App() {
     <RobotPrefs.Provider value={prefs}>
       <ToastProvider>
         {phase === 'splash' && <Splash full={settings.showIntro} onDone={afterSplash} />}
-        {phase === 'lock' && <LockScreen onUnlock={() => setPhase(settings.setupCompleted ? 'app' : 'wizard')} />}
+        {phase === 'lock' && <LockScreen onUnlock={() => void afterUnlock()} />}
+        {phase === 'login' && teamCfg && <TeamLogin cfg={teamCfg} onDone={() => call<AppSettings>('settings:get').then((s) => (setSettings(s), setPhase(s.setupCompleted ? 'app' : 'wizard')))} />}
         {phase === 'wizard' && <Wizard settings={settings} onDone={(s) => (setSettings(s), setPhase('app'))} />}
         {phase === 'app' && <Shell settings={settings} setSettings={setSettings} onLock={() => call('lock:lock').then(() => setPhase('lock'))} />}
       </ToastProvider>
@@ -158,7 +170,7 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
     return () => window.removeEventListener('keydown', h)
   }, [go])
 
-  const Page = { dashboard: Dashboard, control: ControlCenter, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, pipeline: Pipeline, leads: Leads, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
+  const Page = { dashboard: Dashboard, control: ControlCenter, finder: Finder, research: Research, analysis: Analysis, companies: Companies, communication: Communication, email: EmailPage, whatsapp: WhatsAppPage, studio: Studio, offers: Offers, followup: FollowUp, pipeline: Pipeline, leads: Leads, team: Team, reports: Reports, files: Files, integrations: Integrations, automations: Automations, settings: SettingsPage }[route.page]
   const counts: Partial<Record<PageKey, number>> = { studio: dash?.draftsPending ?? 0, companies: dash?.reviewPending ?? 0 }
   const dark = settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   let lastGroup = ''
@@ -195,6 +207,7 @@ function Shell({ settings, setSettings, onLock }: { settings: AppSettings; setSe
           <header className="topbar">
             <GlobalSearch />
             <div className="spacer" />
+            <TeamChip />
             <Notifications />
             <Btn variant="ghost" icon={dark ? <Sun /> : <Moon />} onClick={toggleTheme} title="Tema" aria-label="Temayı değiştir" />
             {settings.security.lockEnabled && <Btn variant="ghost" icon={<Lock />} onClick={onLock} title="Kilitle" aria-label="Uygulamayı kilitle" />}
@@ -353,5 +366,21 @@ function RobotNotifier({ enabled }: { enabled: boolean }) {
       <Robot mood={state.mood} size={110} />
       <div className="robot-bubble" style={{ marginBottom: 30, maxWidth: 280 }}>{state.text}</div>
     </div>
+  )
+}
+
+/** Üst çubukta ekip durumu: kullanıcı adı + eşitleme göstergesi (ekip modu kapalıysa görünmez). */
+function TeamChip() {
+  const { data: t } = useApi<{ enabled: boolean; loggedIn: boolean; online: boolean; name: string; role: string; sync: { pendingChanges: number; pendingFiles: number; lastError: string | null; lastSync: string | null } }>('team:config', undefined, ['team', 'settings'])
+  const { go } = useNav()
+  if (!t?.enabled || !t.loggedIn) return null
+  const tone = !t.online ? 'danger' : t.sync.lastError ? 'warning' : t.sync.pendingChanges || t.sync.pendingFiles ? 'brand' : 'success'
+  const label = !t.online ? 'Çevrimdışı' : t.sync.lastError ? 'Eşitleme sorunu' : t.sync.pendingChanges || t.sync.pendingFiles ? 'Eşitleniyor' : 'Eşitlendi'
+  return (
+    <button className="team-chip" onClick={() => go('team')} title={`${label}${t.sync.lastSync ? ' · son: ' + new Date(t.sync.lastSync).toLocaleTimeString('tr-TR') : ''}${t.sync.lastError ? ' · ' + t.sync.lastError : ''}`}>
+      {t.online ? <Cloud size={16} /> : <CloudOff size={16} />}
+      <span className={`dot ${tone}`} />
+      <span className="small">{t.name}{t.role === 'admin' ? ' · Admin' : ''}</span>
+    </button>
   )
 }

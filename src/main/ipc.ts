@@ -619,6 +619,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     })
   }
 
+  const ADMIN_ONLY = new Set(['companies:delete', 'stages:save', 'backup:restore'])
   const LOCK_FREE = new Set(['app:info', 'lock:status', 'lock:unlock', 'settings:get', 'brand:logoData', 'team:config', 'team:login', 'team:check', 'team:serverStatus', 'team:disable'])
 
   ipcMain.handle('uca:invoke', async (event, channel: unknown, payload: unknown) => {
@@ -627,6 +628,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
       if (!(url.startsWith('file://') || (process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL)))) throw new Error('Yetkisiz istek kaynağı')
       if (typeof channel !== 'string' || !Object.prototype.hasOwnProperty.call(H, channel)) throw new Error('Bilinmeyen komut')
       if (!LOCK_FREE.has(channel) && !s.lock.isUnlocked()) throw new Error('Uygulama kilitli')
+      if (ADMIN_ONLY.has(channel) && s.team.active() && !s.team.isAdmin()) throw new Error('Bu işlem için ekipte admin yetkisi gerekir.')
       const data = await H[channel](payload)
       return { ok: true, data }
     } catch (e) {

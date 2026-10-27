@@ -1,6 +1,6 @@
 // Ortak arayüz bileşenleri (tasarım sistemi).
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 
 type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info' | string
@@ -54,10 +54,18 @@ export function Stat({ label, value, sub, icon, accent }: { label: string; value
 }
 
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
+  // Etiket, tek bir giriş alanını sarıyorsa ona bağlanır (tıklayınca odaklanır; ekran okuyucular ve testler alanı adından bulur)
+  const autoId = useId()
+  let child = children
+  let htmlFor: string | undefined
+  if (isValidElement<{ id?: string }>(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type)) {
+    htmlFor = children.props.id ?? autoId
+    child = cloneElement(children, { id: htmlFor })
+  }
   return (
     <div className="field">
-      <label>{label}</label>
-      {children}
+      <label htmlFor={htmlFor}>{label}</label>
+      {child}
       {hint && <div className="hint">{hint}</div>}
     </div>
   )

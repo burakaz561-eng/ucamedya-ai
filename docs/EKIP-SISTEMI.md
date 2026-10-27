@@ -51,3 +51,40 @@ Kararlar (kullanıcı, 2026-10-27):
 3. Admin paneli (kullanıcı yönetimi) + kim yaptı bilgisi.
 4. Gönderim kilidi, dosya eşitleme.
 5. Testler: iki ayrı uygulama örneği + yerel WordPress ile uçtan uca. Paket 0.4.0.
+
+## Kurulum (adım adım)
+
+1. **Eklentiyi güncelle (bir kez):** UcaMedya AI → Web Sitesi Talepleri → Bağlantı ayarları → **Eklentiyi indir** (sürüm 2.0). WordPress → Eklentiler → Yeni ekle → Eklenti yükle → zip → **"Mevcut eklentiyi yüklenenle değiştir"**. Ayarlar ve bağlantı anahtarı korunur.
+2. **Ekip sunucusunu kur (ana bilgisayar, bir kez):**
+   - UcaMedya AI → **Ekip ve Kullanıcılar** → sunucu: `https://ucamedya.com.tr/`.
+   - Adınız, e-posta, şifre girin; bağlantı anahtarı otomatik kullanılır.
+   - "Bu bilgisayardaki verileri yükle" işaretli kalsın → **Ekip sunucusunu kur**.
+   - İlk yükleme arka planda sürer (~175 MB dosya).
+3. **Kullanıcı ekle:** Ekip ve Kullanıcılar → **Kullanıcı ekle** → ad, e-posta, geçici şifre, rol.
+4. **Diğer bilgisayar (Windows / Mac):**
+   - Uygulamayı kurun → Ekip ve Kullanıcılar → sunucu adresi → e-posta + şifre → **Giriş yap**.
+   - Veriler birkaç dakikada iner.
+   - Bundan sonra uygulama her açılışta oturumla açılır. Çıkış yapılırsa giriş ekranı gelir.
+
+## Test durumu (0.4.0)
+
+- ✅ **Sunucu testi** (yerel WordPress, `tests/wp-team-server.mjs`) — 27 adım:
+  - kurulum, giriş, yetkiler, kullanıcı yönetimi,
+  - alan birleştirme, silme,
+  - dosyalar, gönderim kilidi,
+  - devre dışı bırakılan kullanıcının oturumunun kapanması.
+- ✅ **Eşitleme motoru** (`tests/sync.test.ts`, sahte sunucuyla iki bilgisayar):
+  - ilk yükleme, tohum kayıtlar çift olmaz,
+  - aynı anda farklı alanlar, silme,
+  - aynı iletişim bilgisinin iki yerde eklenmesi,
+  - dosya göreli yolları,
+  - teklif numarası çakışması.
+- ✅ **Gerçek HTTP ile iki veritabanı** (`tests/live-team-sync.test.ts`).
+- ✅ **İki uygulama penceresiyle arayüz testi** (`scripts/e2e-team.mjs`, paketlenmiş uygulamada):
+  - kurulum, kullanıcı ekleme, üyenin katılması ve veriyi görmesi,
+  - üye yetki engelleri,
+  - B'nin değişikliğinin "kim yaptı" bilgisiyle A'ya gelmesi,
+  - çıkış → giriş ekranı → tekrar giriş.
+- 🟡 **Canlı sunucu:** gerçek ucamedya.com.tr hostingde (MySQL, hosting yükleme sınırları) henüz denenmedi.
+- 🟡 **Mac:** ekip modu Mac'te denenmedi.
+- 🟡 **Gerçek ölçek:** büyük ilk yükleme (~1.700 kayıt + 676 dosya) gerçek internet hızında ölçülmedi.
