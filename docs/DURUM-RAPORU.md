@@ -2,6 +2,12 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.1 — WhatsApp görsel yapıştırma düzeltmesi
+
+- **Sorun:** 0.3.7 hızlandırmasından sonra görsel, WhatsApp yeni sohbete geçmeden (1,3 sn) yapıştırılıyordu ve kayboluyordu. Ayrıca PowerShell ilerleme kaydı (CLIXML) "OK" sonucunun arkasına eklendiği için uygulama başarılı yapıştırmayı hata sanıyordu.
+- **Düzeltme:** sohbet açıldıktan sonra en az 3 sn beklenir (Mac: 2,8 sn), yapıştırmadan önce 0,6 sn daha; ilerleme kayıtları kapatıldı; sonuç ayrı bir "OK" satırı olarak aranır (birim testi eklendi).
+- 🟡 Canlı WhatsApp denemesi kullanıcının bilgisayarında yapılacak.
+
 ## 0.4.0 — Ekip modu: giriş, kullanıcılar, ortak veritabanı
 
 Ayrıntı ve kurulum: `docs/EKIP-SISTEMI.md`.

@@ -720,3 +720,14 @@ describe('kuyruk: toplu ekleme, kuyruktan çıkarma, iptal sonrası yeniden ekle
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+import { isOk } from '../src/main/outreach/whatsapp-paste'
+describe('WhatsApp yapıştırma sonucu', () => {
+  it('OK satırını, arkasında PowerShell CLIXML olsa da tanır', () => {
+    expect(isOk('OK')).toBe(true)
+    expect(isOk('OK\r\n#< CLIXML\r\n<Objs Version="1.1.0.1"><Obj S="progress"/></Objs>')).toBe(true)
+    expect(isOk('NOFOCUS')).toBe(false)
+    expect(isOk('NOWINDOW')).toBe(false)
+    expect(isOk('')).toBe(false)
+  })
+})

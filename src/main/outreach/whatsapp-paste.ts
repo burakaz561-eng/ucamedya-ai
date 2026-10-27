@@ -20,6 +20,7 @@ const run = (cmd: string, args: string[], timeoutMs = 15000) =>
 // Tuş, WScript SendKeys yerine gerçek klavye olayı (keybd_event) ile gönderilir; WhatsApp'ın WebView tabanlı yazma alanı bunu algılar.
 const WIN_SCRIPT = `
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
 public static class UcaWin {
@@ -58,7 +59,7 @@ if ([UcaWin]::FgPid() -ne [uint32]$p.Id) {
   if ([UcaWin]::FgPid() -ne [uint32]$p.Id) { $ws = New-Object -ComObject WScript.Shell; [void]$ws.AppActivate($p.Id); Start-Sleep -Milliseconds 500 }
 }
 if ([UcaWin]::FgPid() -ne [uint32]$p.Id) { Write-Output 'NOFOCUS'; exit 3 }
-Start-Sleep -Milliseconds 400
+Start-Sleep -Milliseconds 600
 if ([UcaWin]::FgPid() -ne [uint32]$p.Id) { Write-Output 'NOFOCUS'; exit 3 }
 [UcaWin]::CtrlV()
 Write-Output 'OK'
@@ -68,7 +69,7 @@ const MAC_SCRIPT = [
   'tell application "System Events"',
   '  if not (exists process "WhatsApp") then return "NOWINDOW"',
   'end tell',
-  'delay 1.2',
+  'delay 2.8',
   'tell application "WhatsApp" to activate',
   'delay 0.4',
   'tell application "System Events" to set fg to name of first application process whose frontmost is true',
@@ -79,11 +80,17 @@ const MAC_SCRIPT = [
 
 export type PasteResult = { ok: true } | { ok: false; reason: string }
 
+/** Betik çıktısında ayrı bir "OK" satırı var mı (önünde/arkasında başka kayıtlar olabilir) */
+export function isOk(out: string): boolean {
+  return out.split(/\r?\n/).some((l) => l.trim() === 'OK')
+}
+
 /**
  * Sohbeti açmadan HEMEN ÖNCE çağrılır: yapıştırma aracı (PowerShell + derleme) sohbet açılırken hazırlanır,
  * sohbet geçişi için en az minDelayMs beklenir, WhatsApp öne gelir gelmez yapıştırılır. Dönen söz, sonucu verir.
+ * Not: 1,3 sn çok kısaydı — WhatsApp yeni sohbete geçmeden yapıştırılan görsel sohbet değişince kayboluyordu.
  */
-export function startPasteIntoWhatsApp(minDelayMs = 1300): Promise<PasteResult> {
+export function startPasteIntoWhatsApp(minDelayMs = 3000): Promise<PasteResult> {
   return pasteIntoWhatsApp(minDelayMs)
 }
 
@@ -92,12 +99,13 @@ async function pasteIntoWhatsApp(minDelayMs: number): Promise<PasteResult> {
     // EncodedCommand: betikteki tırnak işaretleri komut satırında bozulmaz
     const script = WIN_SCRIPT.split('__MIN__').join(String(Math.max(800, Math.round(minDelayMs))))
     const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], 20000)
-    if (/OK$/.test(r.out)) return { ok: true }
+    // Çıktıda PowerShell ilerleme kayıtları (CLIXML) olabilir: sonda değil, ayrı bir OK satırı aranır
+    if (isOk(r.out)) return { ok: true }
     return { ok: false, reason: /NOWINDOW/.test(r.out) ? 'WhatsApp masaüstü penceresi bulunamadı' : /NOFOCUS/.test(r.out) ? 'WhatsApp penceresi öne alınamadı; başka bir pencereye tuş gönderilmedi' : `yapıştırılamadı (${r.out.slice(0, 120)})` }
   }
   if (process.platform === 'darwin') {
     const r = await run('osascript', MAC_SCRIPT.flatMap((l) => ['-e', l]))
-    if (/OK$/.test(r.out)) return { ok: true }
+    if (isOk(r.out)) return { ok: true }
     if (/NOWINDOW/.test(r.out)) return { ok: false, reason: 'WhatsApp uygulaması açık değil' }
     if (/NOFOCUS/.test(r.out)) return { ok: false, reason: 'WhatsApp öne alınamadı; başka bir pencereye tuş gönderilmedi' }
     if (/not allowed|1002|assistive/i.test(r.out)) return { ok: false, reason: 'macOS izni gerekli: Sistem Ayarları → Gizlilik ve Güvenlik → Erişilebilirlik → UcaMedya AI Growth Studio' }
