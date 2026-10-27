@@ -10,6 +10,9 @@ import { Badge, Btn, Callout, Card, Modal, Seg, useAction, useConfirm, Field } f
 import { DataTable } from './DataTable'
 import { DRAFT_STATUS, MSG_STATUS, fmtDate } from '../lib/format'
 
+const SENT = ['sent', 'delivered', 'read', 'manual_opened', 'unverified', 'test_sent']
+const QUEUED = ['queued', 'sending', 'preparing', 'awaiting_confirm']
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whatsapp'; testMode: boolean }) {
   const [view, setView] = useState<'drafts' | 'messages'>('drafts')
@@ -26,6 +29,20 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
   const manual = channel === 'whatsapp' && qs?.mode === 'click_to_chat'
   const web = channel === 'email' ? ['gmail_web', 'webmail'].includes(q?.emailTransport) : ['whatsapp_web', 'whatsapp_desktop'].includes(qs?.mode)
   const modeLabel = q?.sendMode === 'draft' ? 'Taslak modu: mesajlar hazırlanır, gönderilmez' : q?.sendMode === 'confirm' ? 'Onaylı gönderim: her mesaj için önizleme ve onay' : 'Onaylanmış kuyruk: sırayla gönderilir, sorun olursa durur'
+  // Filtre: gönderilenler ayrı durur, yanlışlıkla tekrar gönderilmesin
+  const [dfilter, setDfilter] = useState<'pending' | 'queued' | 'sent' | 'all'>('pending')
+  const [mfilter, setMfilter] = useState<'all' | 'sent' | 'queued' | 'other'>('all')
+  const draftGroup = (d: any): 'pending' | 'queued' | 'sent' => {
+    if (d.status === 'sent' || SENT.includes(d.send_status)) return 'sent'
+    if (d.status === 'queued' || QUEUED.includes(d.send_status)) return 'queued'
+    if ((d.eligibility?.reasons ?? []).some((x: string) => /daha önce mesaj gönderilmiş/.test(x))) return 'sent'
+    return 'pending'
+  }
+  const msgGroup = (m: any): 'sent' | 'queued' | 'other' => (SENT.includes(m.status) ? 'sent' : QUEUED.includes(m.status) ? 'queued' : 'other')
+  const dcount = (g: string) => (drafts ?? []).filter((d) => draftGroup(d) === g).length
+  const mcount = (g: string) => (messages ?? []).filter((m) => msgGroup(m) === g).length
+  const shownDrafts = (drafts ?? []).filter((d) => dfilter === 'all' || draftGroup(d) === dfilter)
+  const shownMessages = (messages ?? []).filter((m) => mfilter === 'all' || msgGroup(m) === mfilter)
   const ids = [...sel]
   const selected = (drafts ?? []).filter((d) => sel.has(d.id))
   const failed = (messages ?? []).filter((m) => ['failed', 'blocked'].includes(m.status))
@@ -129,12 +146,21 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
         </Card>
       )}
 
-      <div className="row"><Seg value={view} onChange={setView} items={[{ key: 'drafts', label: `Taslaklar (${drafts?.length ?? 0})` }, { key: 'messages', label: `Gönderimler (${messages?.length ?? 0})` }]} /></div>
+      <div className="row wrap">
+        <Seg value={view} onChange={setView} items={[{ key: 'drafts', label: `Taslaklar (${drafts?.length ?? 0})` }, { key: 'messages', label: `Gönderimler (${messages?.length ?? 0})` }]} />
+        <div className="spacer" />
+        {view === 'drafts' ? (
+          <Seg value={dfilter} onChange={(v) => (setDfilter(v), setSel(new Set()))} items={[{ key: 'pending', label: `Gönderilmeyenler (${dcount('pending')})` }, { key: 'queued', label: `Kuyrukta (${dcount('queued')})` }, { key: 'sent', label: `Gönderilenler (${dcount('sent')})` }, { key: 'all', label: 'Tümü' }]} />
+        ) : (
+          <Seg value={mfilter} onChange={(v) => (setMfilter(v), setMsel(new Set()))} items={[{ key: 'all', label: 'Tümü' }, { key: 'sent', label: `Gönderilenler (${mcount('sent')})` }, { key: 'queued', label: `Kuyrukta (${mcount('queued')})` }, { key: 'other', label: `İptal / hata (${mcount('other')})` }]} />
+        )}
+      </div>
+      {view === 'drafts' && dfilter === 'sent' && <Callout tone="info">Bu şirketlere bu kanaldan zaten mesaj gönderildi. Tekrar gönderim engeli açık olduğu için toplu kuyruğa eklenmezler.</Callout>}
       <Card pad={false}>
         {view === 'drafts' ? (
           <DataTable
             id={`outreach-${channel}`}
-            rows={drafts ?? []}
+            rows={shownDrafts}
             selectable
             selected={sel}
             onSelect={setSel}
@@ -154,7 +180,7 @@ export function OutreachPanel({ channel, testMode }: { channel: 'email' | 'whats
         ) : (
           <DataTable
             id={`messages-${channel}`}
-            rows={messages ?? []}
+            rows={shownMessages}
             selectable
             selected={msel}
             onSelect={setMsel}

@@ -436,10 +436,11 @@ export class OutreachService {
         await this.processMessage(m.id)
         this.emitChange('outreach')
         const s = this.settings.get().outreach
-        // WhatsApp masaüstünde her mesajı kullanıcı kendisi gönderir (Enter); hız onun elindedir, bu yüzden aralık kısa tutulur
+        // WhatsApp masaüstü: kullanıcı "gönderdim" dediyse hemen sıradakine geçilir (hız onun elinde);
+        // uygulama Enter'a bastıysa ayarlardaki aralık (en az 3 sn) beklenir
         const desktop = channel === 'whatsapp' && this.transport('whatsapp') === 'whatsapp_desktop'
-        // Otomatik gönderimde ise ayarlardaki aralık olduğu gibi uygulanır
-        const wait = (channel === 'email' ? s.emailIntervalSec : desktop && !autoSendEnabled(s) ? Math.min(s.whatsappIntervalSec, 2) : s.whatsappIntervalSec) * 1000
+        const auto = desktop && this.db.get<{ p: string | null }>('SELECT provider_message_id AS p FROM outreach_messages WHERE id = ?', m.id)?.p === 'desktop:auto-enter'
+        const wait = channel === 'email' ? s.emailIntervalSec * 1000 : !desktop ? s.whatsappIntervalSec * 1000 : auto ? Math.max(3, s.whatsappIntervalSec) * 1000 : 500
         const until = Date.now() + wait
         while (Date.now() < until && this.queueState(channel) === 'running') await new Promise((r) => setTimeout(r, 500))
       }
@@ -595,8 +596,6 @@ export class OutreachService {
         const enter = await pressEnterInWhatsApp(img ? 1500 : 3000)
         if (enter.ok) {
           this.companies.log(m.company_id, 'WhatsApp\'ta Enter\'a uygulama bastı (otomatik gönderim)', `+${to} · WhatsApp'ın içi okunamadığı için gidiş ayrıca doğrulanamaz`, 'system', 'message', m.id)
-          // Görselin yüklenmesi başlasın diye sohbet değiştirilmeden önce kısa bekleme
-          await new Promise((r) => setTimeout(r, 2500))
           return 'auto-sent'
         }
         this.companies.log(m.company_id, 'Otomatik gönderilmedi: Enter\'a basılamadı', enter.reason, 'system', 'message', m.id)

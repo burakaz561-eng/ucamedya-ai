@@ -2,6 +2,13 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.4 — WhatsApp hız ve filtre
+
+- "WhatsApp’ta gönderdim" denince sıradaki sohbet 0,5 sn içinde açılır (önceden otomatik gönderim açıkken 30 sn bekleniyordu).
+- Otomatik gönderimde (uygulama Enter’a basar) mesajlar arası bekleme ayarlanabilir, en az 3 sn; kullanıcının ayarı 3 sn yapıldı. Enter sonrası ek 2,5 sn bekleme kaldırıldı.
+- Taslaklar: Gönderilmeyenler / Kuyrukta / Gönderilenler / Tümü filtresi (varsayılan Gönderilmeyenler). Gönderimler: Tümü / Gönderilenler / Kuyrukta / İptal-hata.
+- 🟡 İlk otomatik denemede (0.4.3) 1. mesaj "WhatsApp penceresi öne alınamadı" ile otomatik gönderilmedi (sabit hat numarası, 0212), 2. mesajda Enter’a basıldı. WhatsApp içeriği ekran görüntüsünde yakalanamadığı için gidişi doğrulanamadı.
+
 ## 0.4.3 — WhatsApp masaüstünde otomatik gönderim (kullanıcı izniyle)
 
 - Kullanıcı isteği (2026-10-27): "enter tuşunu sana izin veriyorum mesajları sen gönder".
