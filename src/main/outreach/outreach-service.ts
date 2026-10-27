@@ -11,6 +11,7 @@
 
 import { shell } from 'electron'
 import { copyImageToClipboard } from './image-clipboard'
+import { pasteIntoWhatsApp } from './whatsapp-paste'
 import { imageDataUri, imageFor } from './message-image'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
@@ -527,11 +528,17 @@ export class OutreachService {
     const company = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
     const to = m.recipient_key
     const img = imageFor('whatsapp', s.outreach.image)
+    let copied = false
     if (img) {
       // Pano PNG olarak yazılır (JPG de PNG'ye çevrilir); WhatsApp'a Ctrl/Cmd+V ile yapıştırılır
-      await copyImageToClipboard(img).catch((e) => this.companies.log(m.company_id, 'Görsel panoya kopyalanamadı', (e as Error).message, 'system'))
+      copied = await copyImageToClipboard(img).then(() => true, (e) => (this.companies.log(m.company_id, 'Görsel panoya kopyalanamadı', (e as Error).message, 'system'), false))
     }
     await shell.openExternal(whatsappDesktopUrl(to, m.body))
+    // Görsel otomatik yapıştırılır: WhatsApp görsel önizlemesini açar, metin görselin açıklamasına geçer; Enter kullanıcıda
+    const paste = img && copied && s.outreach.image?.autoPaste !== false ? await pasteIntoWhatsApp() : null
+    if (paste && !paste.ok) this.companies.log(m.company_id, 'Görsel WhatsApp\'a otomatik yapıştırılamadı', paste.reason, 'system', 'message', m.id)
+    const pasteKey = process.platform === 'darwin' ? 'Cmd+V' : 'Ctrl+V'
+    const imageNote = !img ? null : paste?.ok ? 'Görsel sohbete yapıştırıldı: WhatsApp\'ta görsel önizlemesi açıldı ve metin görselin açıklamasına geçti. Kontrol edip Enter ile gönderin.' : `Görsel panoya kopyalandı${paste ? ` ama otomatik yapıştırılamadı (${paste.reason})` : ''}. WhatsApp'ta mesaj kutusuna tıklayıp ${pasteKey} yapın; görsel ekranında Enter ile gönderin.`
     this.companies.log(m.company_id, 'WhatsApp uygulamasında sohbet açıldı', `+${to}`, 'system', 'message', m.id)
     if (s.outreach.sendMode === 'draft') {
       this.db.run("UPDATE outreach_messages SET status = 'prepared', error = 'WhatsApp uygulamasında sohbet açıldı ve mesaj yazıldı; gönderilmedi.', sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", m.id)
@@ -542,7 +549,7 @@ export class OutreachService {
     const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
       this.pendingConfirm.set(m.id, resolve)
       const rec = this.recipient(m.company_id, 'whatsapp')
-      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, image: img ? imageDataUri(img) : null, imageNote: img ? `Görsel panoya kopyalandı. WhatsApp'ta mesaj kutusuna tıklayıp ${process.platform === 'darwin' ? 'Cmd+V' : 'Ctrl+V'} ile yapıştırın ve görsel ekranında gönderin; metin kutuda kaldıysa onu da Enter ile gönderin.` : null, preview: null, testMode: false, manualSend: true })
+      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, image: img ? imageDataUri(img) : null, imageNote, preview: null, testMode: false, manualSend: true })
     })
     this.emitConfirm({ messageId: m.id, closed: true })
     if (decision === 'send') return 'sent'
@@ -577,6 +584,7 @@ export class OutreachService {
     // 1) Oturum ve hazırlık (henüz gönderilmez)
     let verified = false
     let verifyNote: string | null = null
+    let attachWarning: string | null = null
     if (m.channel === 'whatsapp') {
       await this.web.wa.ensureLoggedIn(company)
       const r = await this.web.wa.prepare(to, m.body, company)
@@ -601,6 +609,7 @@ export class OutreachService {
       }
       verified = r.recipientVerified
       verifyNote = r.account ? `Gönderen hesap: ${r.account}` : null
+      attachWarning = 'attachWarning' in r ? (r.attachWarning ?? null) : null
     }
 
     // 2) Taslak modu: göndermeden bırak
@@ -620,7 +629,7 @@ export class OutreachService {
       const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
         this.pendingConfirm.set(m.id, resolve)
         const rec = this.recipient(m.company_id, m.channel)
-        this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, image: img ? imageDataUri(img) : null, imageNote: img ? 'Görsel e-postaya ek olarak eklendi.' : m.channel === 'whatsapp' && imageFor('whatsapp', s.outreach.image) ? 'WhatsApp Web kanalında görsel ekleme henüz desteklenmiyor; yalnızca metin gönderilir.' : null, preview, testMode })
+        this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: m.channel, company, recipient: to, recipientVerified: verified, verifyNote, subject: m.channel === 'email' ? subject : null, body: m.body, attachment, image: img ? imageDataUri(img) : null, imageNote: attachWarning ? `⚠ ${attachWarning}` : img ? 'Görsel e-postaya ek olarak eklendi.' : m.channel === 'whatsapp' && imageFor('whatsapp', s.outreach.image) ? 'WhatsApp Web kanalında görsel ekleme henüz desteklenmiyor; yalnızca metin gönderilir.' : null, preview, testMode })
       })
       this.emitConfirm({ messageId: m.id, closed: true })
       if (decision !== 'send') {

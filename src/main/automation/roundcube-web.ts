@@ -10,7 +10,7 @@ import type { AgentBrowser } from './agent-browser'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export type WebmailPrepareResult =
-  | { ok: true; account: string | null; recipientVerified: boolean }
+  | { ok: true; account: string | null; recipientVerified: boolean; attachWarning?: string | null }
   | { ok: false; code: 'not_logged_in' | 'ui_changed' | 'recipient_mismatch' | 'no_url'; reason: string }
 
 export function webmailBase(url: string): string | null {
@@ -91,19 +91,26 @@ export class RoundcubeWeb {
       await body.fill(m.body)
       const subj = page.locator('#compose-subject')
       if ((await subj.inputValue().catch(() => '')) !== m.subject) await subj.fill(m.subject)
+      let attachWarning: string | null = null
       if (m.attachment && (!Array.isArray(m.attachment) || m.attachment.length)) {
         this.agent.report({ state: 'busy', step: 'Ekler ekleniyor', company })
-        await page.locator('#uploadformInput, input[type="file"][name="_attachments[]"]').first().setInputFiles(Array.isArray(m.attachment) ? m.attachment : [m.attachment]).catch(() => undefined)
+        const files = Array.isArray(m.attachment) ? m.attachment : [m.attachment]
+        const count = () => page.locator('#attachment-list li').count().catch(() => 0)
+        const before = await count()
+        await page.locator('#uploadformInput, input[type="file"][name="_attachments[]"]').first().setInputFiles(files).catch(() => undefined)
         for (let i = 0; i < 60; i++) {
-          if (!(await page.evaluate(`!!(window.rcmail && rcmail.busy)`).catch(() => false))) break
           await sleep(500)
+          const busy = await page.evaluate(`!!(window.rcmail && rcmail.busy)`).catch(() => false)
+          if (!busy && (await count()) >= before + files.length) break
         }
+        const added = (await count()) - before
+        if (added < files.length) attachWarning = `${files.length} ekten ${Math.max(0, added)} tanesi eklenebildi; webmail penceresinde kontrol edin.`
       }
       const toVal = ((await page.locator('#_to').inputValue().catch(() => '')) || '').toLowerCase()
       const verified = toVal.split(/[,;\s]+/).filter(Boolean).some((x) => x.replace(/^.*</, '').replace(/>$/, '') === m.to.toLowerCase())
       if (!verified) return { ok: false, code: 'recipient_mismatch', reason: `Alıcı alanı doğrulanamadı (${m.to}).` }
       this.agent.report({ state: 'busy', step: 'E-posta hazır, onay bekleniyor', company, detail: m.to })
-      return { ok: true, account: st.account, recipientVerified: true }
+      return { ok: true, account: st.account, recipientVerified: true, attachWarning }
     })
   }
 

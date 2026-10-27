@@ -287,7 +287,8 @@ function TemplatesEditor({ s, setS }: { s: AppSettings; setS: (v: AppSettings) =
               {img.path && <Btn size="sm" variant="ghost" onClick={async () => { await run(() => call('outreach:clearImage')); setImg({ path: '' }) }}>Kaldır</Btn>}
             </div>
             <label className="check"><input type="checkbox" checked={img.email} onChange={(e) => setImg({ email: e.target.checked })} /><span className="small">E-postalara ek olarak ekle</span></label>
-            <label className="check"><input type="checkbox" checked={img.whatsapp} onChange={(e) => setImg({ whatsapp: e.target.checked })} /><span className="small">WhatsApp mesajlarında kullan — WhatsApp masaüstü uygulaması dışarıdan dosya eklemeye izin vermediği için görsel panoya kopyalanır; sohbet açılınca Ctrl+V (Mac'te Cmd+V) ile yapıştırırsınız</span></label>
+            <label className="check"><input type="checkbox" checked={img.whatsapp} onChange={(e) => setImg({ whatsapp: e.target.checked })} /><span className="small">WhatsApp mesajlarında kullan</span></label>
+            {img.whatsapp && <label className="check" style={{ marginLeft: 22 }}><input type="checkbox" checked={img.autoPaste !== false} onChange={(e) => setImg({ autoPaste: e.target.checked })} /><span className="small">Görseli sohbete otomatik yapıştır — sohbet açılınca uygulama WhatsApp penceresine Ctrl+V (Mac'te Cmd+V) gönderir; görsel ve metin tek mesaj olarak hazırlanır, Enter'a siz basarsınız. WhatsApp öne gelemezse hiçbir tuşa basılmaz, elle yapıştırırsınız. (Mac'te Erişilebilirlik izni gerekir.)</span></label>}
           </div>
         </div>
       </div>

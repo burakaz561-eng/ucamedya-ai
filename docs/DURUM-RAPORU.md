@@ -2,6 +2,11 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.3.6 — Görsel mesajla birlikte (WhatsApp otomatik yapıştırma, e-posta ek doğrulama)
+
+- WhatsApp masaüstü: sohbet açılınca görsel panoya kopyalanır ve uygulama WhatsApp penceresine Ctrl+V (Mac: Cmd+V) gönderir; WhatsApp görsel önizlemesini açar, metin görselin açıklamasına geçer, Enter kullanıcıda. Güvenlik: tuş yalnızca öndeki pencerenin WhatsApp masaüstü olduğu doğrulanırsa gönderilir (tarayıcılar hariç); değilse hiçbir tuşa basılmaz ve onay penceresi elle yapıştırmayı söyler. Windows odak kilidi için geçici iş parçacığı bağlama; betik EncodedCommand ile (tırnak bozulması yok). Ayar: "Görseli sohbete otomatik yapıştır". ✅ kullanıcının bilgisayarında gerçek WhatsApp'ta doğrulandı (önizleme + açıklama, gönderilmedi). 🟡 Mac'te denenmedi (Erişilebilirlik izni gerekir).
+- Webmail: ek gerçekten ek listesinde görünene kadar beklenir; eklenemezse onay penceresinde uyarı. 🟡 canlı webmail'de denenmedi (oturum kapalıydı).
+
 ## 0.3.5 — Toplu kuyruğa ekleme ve silme
 
 - E-posta Kampanyaları / WhatsApp İşlemleri: "Seçilenleri kuyruğa ekle" onaylı ve onay bekleyen taslakları tek adımda kuyruğa alır (onay bekleyenler önce onaylanır, sayısı onay penceresinde yazar).
