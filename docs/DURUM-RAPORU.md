@@ -2,6 +2,14 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.3 — WhatsApp masaüstünde otomatik gönderim (kullanıcı izniyle)
+
+- Kullanıcı isteği (2026-10-27): "enter tuşunu sana izin veriyorum mesajları sen gönder".
+- Ayarlar → "WhatsApp’ta Enter’a uygulama bassın": sohbet açılır, görsel yapıştırılır, Enter’a uygulama basar (WhatsApp öndeyse), ardından ayarlardaki bekleme kadar beklenip sıradakine geçilir. Varsayılan kapalı; kullanıcının bilgisayarında açıldı.
+- Güvenceler: test modunda çalışmaz; görsel yapıştırılamazsa veya WhatsApp öne gelmezse gönderilmez, onay beklenir; günlük WhatsApp sınırı (20) ve mesajlar arası bekleme (30 sn) geçerli; zamanlama rastgeleleştirilmez/gizlenmez.
+- Kayıt: providerId `desktop:auto-enter`; WhatsApp’ın içi okunamadığı için gidiş ayrıca doğrulanamaz (etkinlik kaydında belirtilir).
+- 🟡 Canlı deneme kullanıcıda.
+
 ## 0.4.2 — WhatsApp masaüstünde hızlı sıradaki mesaja geçiş
 
 - **Sorun:** "WhatsApp’ta gönderdim" dedikten sonra sıradaki sohbet için 30 sn bekleniyordu ve ekranda bu görünmüyordu; takılmış gibi duruyordu.

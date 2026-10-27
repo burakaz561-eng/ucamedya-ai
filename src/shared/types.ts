@@ -57,6 +57,8 @@ export interface AppSettings {
     image: { path: string; email: boolean; whatsapp: boolean; autoPaste?: boolean }
     /** WhatsApp masaüstü: Enter algılanınca onay beklemeden sonraki sohbete geç (yalnızca Windows) */
     desktopAutoAdvance?: boolean
+    /** WhatsApp masaüstü: Enter'a uygulama basar (kullanıcının açık izniyle; varsayılan kapalı, test modunda çalışmaz) */
+    desktopAutoSend?: boolean
     templates: { emailSubject: string; emailBody: string; whatsappBody: string }
   }
   backup: { auto: boolean; intervalHours: number; keep: number; dir: string }

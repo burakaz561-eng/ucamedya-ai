@@ -44,6 +44,7 @@ public static class UcaWin {
     AttachThreadInput(me, fgThread, false);
   }
   public static void CtrlV() { keybd_event(0x11,0,0,UIntPtr.Zero); keybd_event(0x56,0,0,UIntPtr.Zero); keybd_event(0x56,0,2,UIntPtr.Zero); keybd_event(0x11,0,2,UIntPtr.Zero); }
+  public static void Enter() { keybd_event(0x0D,0,0,UIntPtr.Zero); keybd_event(0x0D,0,2,UIntPtr.Zero); }
 }
 '@
 $t0 = [Diagnostics.Stopwatch]::StartNew()
@@ -61,7 +62,7 @@ if ([UcaWin]::FgPid() -ne [uint32]$p.Id) {
 if ([UcaWin]::FgPid() -ne [uint32]$p.Id) { Write-Output 'NOFOCUS'; exit 3 }
 Start-Sleep -Milliseconds 600
 if ([UcaWin]::FgPid() -ne [uint32]$p.Id) { Write-Output 'NOFOCUS'; exit 3 }
-[UcaWin]::CtrlV()
+[UcaWin]::__ACTION__()
 Write-Output 'OK'
 `
 
@@ -74,9 +75,10 @@ const MAC_SCRIPT = [
   'delay 0.4',
   'tell application "System Events" to set fg to name of first application process whose frontmost is true',
   'if fg is not "WhatsApp" then return "NOFOCUS"',
-  'tell application "System Events" to keystroke "v" using command down',
+  '__ACTION__',
   'return "OK"'
 ]
+const MAC_ACTIONS = { CtrlV: 'tell application "System Events" to keystroke "v" using command down', Enter: 'tell application "System Events" to key code 36' }
 
 export type PasteResult = { ok: true } | { ok: false; reason: string }
 
@@ -91,7 +93,15 @@ export function isOk(out: string): boolean {
  * Not: 1,3 sn çok kısaydı — WhatsApp yeni sohbete geçmeden yapıştırılan görsel sohbet değişince kayboluyordu.
  */
 export function startPasteIntoWhatsApp(minDelayMs = 3000): Promise<PasteResult> {
-  return pasteIntoWhatsApp(minDelayMs)
+  return keyIntoWhatsApp('CtrlV', minDelayMs)
+}
+
+/**
+ * Kullanıcının izniyle (Ayarlar → otomatik gönder) WhatsApp'ta Enter'a basar: açık sohbetteki mesaj / görsel önizlemesi gönderilir.
+ * Yapıştırmayla aynı güvenlik: WhatsApp masaüstü penceresi öne alınamazsa hiçbir tuşa basılmaz.
+ */
+export function pressEnterInWhatsApp(minDelayMs = 1500): Promise<PasteResult> {
+  return keyIntoWhatsApp('Enter', minDelayMs)
 }
 
 // Kullanıcının WhatsApp'ta Enter'a bastığını algılar (yalnızca Enter tuşunun durumu okunur; başka tuş kaydedilmez).
@@ -149,17 +159,18 @@ export function watchWhatsAppEnter(onEnter: () => void): { stop: () => void } {
 
 const isLine = (out: string, word: string) => out.split(/\r?\n/).some((l) => l.trim() === word)
 
-async function pasteIntoWhatsApp(minDelayMs: number): Promise<PasteResult> {
+async function keyIntoWhatsApp(action: 'CtrlV' | 'Enter', minDelayMs: number): Promise<PasteResult> {
   if (process.platform === 'win32') {
     // EncodedCommand: betikteki tırnak işaretleri komut satırında bozulmaz
-    const script = WIN_SCRIPT.split('__MIN__').join(String(Math.max(800, Math.round(minDelayMs))))
+    const script = WIN_SCRIPT.split('__MIN__').join(String(Math.max(800, Math.round(minDelayMs)))).split('__ACTION__').join(action)
     const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], 20000)
     // Çıktıda PowerShell ilerleme kayıtları (CLIXML) olabilir: sonda değil, ayrı bir OK satırı aranır
     if (isOk(r.out)) return { ok: true }
     return { ok: false, reason: /NOWINDOW/.test(r.out) ? 'WhatsApp masaüstü penceresi bulunamadı' : /NOFOCUS/.test(r.out) ? 'WhatsApp penceresi öne alınamadı; başka bir pencereye tuş gönderilmedi' : `yapıştırılamadı (${r.out.slice(0, 120)})` }
   }
   if (process.platform === 'darwin') {
-    const r = await run('osascript', MAC_SCRIPT.flatMap((l) => ['-e', l]))
+    const lines = MAC_SCRIPT.map((l) => (l === '__ACTION__' ? MAC_ACTIONS[action] : l === 'delay 2.8' ? `delay ${Math.max(0.8, minDelayMs / 1000 - 0.2).toFixed(1)}` : l))
+    const r = await run('osascript', lines.flatMap((l) => ['-e', l]))
     if (isOk(r.out)) return { ok: true }
     if (/NOWINDOW/.test(r.out)) return { ok: false, reason: 'WhatsApp uygulaması açık değil' }
     if (/NOFOCUS/.test(r.out)) return { ok: false, reason: 'WhatsApp öne alınamadı; başka bir pencereye tuş gönderilmedi' }

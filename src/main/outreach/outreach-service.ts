@@ -11,7 +11,11 @@
 
 import { shell } from 'electron'
 import { copyImageToClipboard } from './image-clipboard'
-import { startPasteIntoWhatsApp, watchWhatsAppEnter } from './whatsapp-paste'
+import { pressEnterInWhatsApp, startPasteIntoWhatsApp, watchWhatsAppEnter } from './whatsapp-paste'
+import type { AppSettings } from '@shared/types'
+
+/** WhatsApp masaüstünde Enter'a uygulamanın basması: kullanıcı açtıysa, test modu kapalıysa ve taslak modunda değilse */
+const autoSendEnabled = (o: AppSettings['outreach']) => o.desktopAutoSend === true && !o.testMode && o.sendMode !== 'draft'
 import { imageDataUri, imageFor } from './message-image'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
@@ -434,7 +438,8 @@ export class OutreachService {
         const s = this.settings.get().outreach
         // WhatsApp masaüstünde her mesajı kullanıcı kendisi gönderir (Enter); hız onun elindedir, bu yüzden aralık kısa tutulur
         const desktop = channel === 'whatsapp' && this.transport('whatsapp') === 'whatsapp_desktop'
-        const wait = (channel === 'email' ? s.emailIntervalSec : desktop ? Math.min(s.whatsappIntervalSec, 2) : s.whatsappIntervalSec) * 1000
+        // Otomatik gönderimde ise ayarlardaki aralık olduğu gibi uygulanır
+        const wait = (channel === 'email' ? s.emailIntervalSec : desktop && !autoSendEnabled(s) ? Math.min(s.whatsappIntervalSec, 2) : s.whatsappIntervalSec) * 1000
         const until = Date.now() + wait
         while (Date.now() < until && this.queueState(channel) === 'running') await new Promise((r) => setTimeout(r, 500))
       }
@@ -501,8 +506,8 @@ export class OutreachService {
         testMode = false
         this.db.run('UPDATE outreach_messages SET test_mode = 0 WHERE id = ?', id)
         const outcome = await this.processDesktop(m)
-        if (outcome !== 'sent') return
-        providerId = 'desktop:user-confirmed'
+        if (outcome === 'handled') return
+        providerId = outcome === 'auto-sent' ? 'desktop:auto-enter' : 'desktop:user-confirmed'
       } else if (tr === 'gmail_web' || tr === 'webmail' || tr === 'whatsapp_web') {
         const outcome = await this.processWeb(m, testMode)
         if (outcome !== 'sent') return
@@ -558,7 +563,7 @@ export class OutreachService {
    * Uygulamanın içi okunamadığı için gönderimi kullanıcı kendisi yapar (Enter) ve sonucu burada bildirir;
    * bu kanalda otomatik gönderim ve otomatik doğrulama yoktur.
    */
-  private async processDesktop(m: { id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string }): Promise<'sent' | 'handled'> {
+  private async processDesktop(m: { id: number; company_id: number; draft_id: number | null; channel: Channel; recipient_key: string; subject: string | null; body: string }): Promise<'sent' | 'auto-sent' | 'handled'> {
     const s = this.settings.get()
     const company = this.db.get<{ name: string }>('SELECT name FROM companies WHERE id = ?', m.company_id)?.name ?? ''
     const to = m.recipient_key
@@ -580,6 +585,22 @@ export class OutreachService {
     if (s.outreach.sendMode === 'draft') {
       this.db.run("UPDATE outreach_messages SET status = 'prepared', error = 'WhatsApp uygulamasında sohbet açıldı ve mesaj yazıldı; gönderilmedi.', sent_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", m.id)
       return 'handled'
+    }
+    // Otomatik gönderim (kullanıcı Ayarlar'da açtıysa): Enter'a uygulama basar. Test modunda veya görsel yapıştırılamadıysa
+    // yapılmaz (görselsiz / yanlış mesaj gitmesin); o zaman her zamanki onay akışına düşülür.
+    if (autoSendEnabled(s.outreach)) {
+      if (img && !paste?.ok) {
+        this.companies.log(m.company_id, 'Otomatik gönderilmedi: görsel yapıştırılamadı', 'Enter\'a sizin basmanız bekleniyor', 'system', 'message', m.id)
+      } else {
+        const enter = await pressEnterInWhatsApp(img ? 1500 : 3000)
+        if (enter.ok) {
+          this.companies.log(m.company_id, 'WhatsApp\'ta Enter\'a uygulama bastı (otomatik gönderim)', `+${to} · WhatsApp'ın içi okunamadığı için gidiş ayrıca doğrulanamaz`, 'system', 'message', m.id)
+          // Görselin yüklenmesi başlasın diye sohbet değiştirilmeden önce kısa bekleme
+          await new Promise((r) => setTimeout(r, 2500))
+          return 'auto-sent'
+        }
+        this.companies.log(m.company_id, 'Otomatik gönderilmedi: Enter\'a basılamadı', enter.reason, 'system', 'message', m.id)
+      }
     }
     this.db.run("UPDATE outreach_messages SET status = 'awaiting_confirm' WHERE id = ?", m.id)
     this.emitChange('outreach')
