@@ -2,6 +2,13 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.2 — WhatsApp masaüstünde hızlı sıradaki mesaja geçiş
+
+- **Sorun:** "WhatsApp’ta gönderdim" dedikten sonra sıradaki sohbet için 30 sn bekleniyordu ve ekranda bu görünmüyordu; takılmış gibi duruyordu.
+- **Düzeltme:** WhatsApp masaüstü kanalında mesajlar arası bekleme en fazla 2 sn (gönderimi kullanıcı Enter ile yapar).
+- **Yeni (Windows):** WhatsApp penceresinde Enter’a basıldığı algılanınca onay kendiliğinden verilir ve 1,2 sn sonra sıradaki sohbet açılır. Yalnızca Enter tuşunun durumu okunur (Shift+Enter sayılmaz), yalnızca onay beklenirken ve WhatsApp öndeyken. Ayarlar → Mesaj gönderimi’nden kapatılabilir. Mac’te onay düğmesiyle devam edilir.
+- 🟡 Enter algılama canlı WhatsApp ile denenmedi (betiğin derlenip çalıştığı doğrulandı); kullanıcı deneyecek.
+
 ## 0.4.1 — WhatsApp görsel yapıştırma düzeltmesi
 
 - **Sorun:** 0.3.7 hızlandırmasından sonra görsel, WhatsApp yeni sohbete geçmeden (1,3 sn) yapıştırılıyordu ve kayboluyordu. Ayrıca PowerShell ilerleme kaydı (CLIXML) "OK" sonucunun arkasına eklendiği için uygulama başarılı yapıştırmayı hata sanıyordu.

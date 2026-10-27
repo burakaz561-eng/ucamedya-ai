@@ -55,6 +55,8 @@ export interface AppSettings {
     attachReport: boolean
     /** Mesaja eklenecek görsel (kampanya görseli): e-postada ek, WhatsApp masaüstünde panodan yapıştırma */
     image: { path: string; email: boolean; whatsapp: boolean; autoPaste?: boolean }
+    /** WhatsApp masaüstü: Enter algılanınca onay beklemeden sonraki sohbete geç (yalnızca Windows) */
+    desktopAutoAdvance?: boolean
     templates: { emailSubject: string; emailBody: string; whatsappBody: string }
   }
   backup: { auto: boolean; intervalHours: number; keep: number; dir: string }

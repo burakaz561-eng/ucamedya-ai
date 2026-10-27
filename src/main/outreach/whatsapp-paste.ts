@@ -7,7 +7,7 @@
 // Güvenlik: tuş yalnızca WhatsApp masaüstü penceresi bulunup öne alınabildiyse gönderilir; tarayıcı pencereleri
 // (WhatsApp Web) hariç tutulur. Bulunamazsa hiçbir tuş gönderilmez ve kullanıcıya elle yapıştırması söylenir.
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 
 const run = (cmd: string, args: string[], timeoutMs = 15000) =>
   new Promise<{ code: number; out: string }>((resolve) => {
@@ -82,7 +82,7 @@ export type PasteResult = { ok: true } | { ok: false; reason: string }
 
 /** Betik çıktısında ayrı bir "OK" satırı var mı (önünde/arkasında başka kayıtlar olabilir) */
 export function isOk(out: string): boolean {
-  return out.split(/\r?\n/).some((l) => l.trim() === 'OK')
+  return isLine(out, 'OK')
 }
 
 /**
@@ -93,6 +93,61 @@ export function isOk(out: string): boolean {
 export function startPasteIntoWhatsApp(minDelayMs = 3000): Promise<PasteResult> {
   return pasteIntoWhatsApp(minDelayMs)
 }
+
+// Kullanıcının WhatsApp'ta Enter'a bastığını algılar (yalnızca Enter tuşunun durumu okunur; başka tuş kaydedilmez).
+// Yalnızca WhatsApp masaüstü penceresi öndeyken ve Shift basılı değilken (Shift+Enter = yeni satır) sayılır.
+const WIN_ENTER_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class UcaKey {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
+  public static uint FgPid() { uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return pid; }
+  public static bool Down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+}
+'@
+$ids = @(Get-Process | Where-Object { $_.MainWindowTitle -like 'WhatsApp*' -and $_.ProcessName -notmatch '^(chrome|msedge|firefox|opera|brave|vivaldi|UcaMedya.*)$' } | ForEach-Object { [uint32]$_.Id })
+$names = @(Get-Process | Where-Object { $ids -contains [uint32]$_.Id } | ForEach-Object { $_.ProcessName })
+$was = [UcaKey]::Down(0x0D)
+$t0 = [Diagnostics.Stopwatch]::StartNew()
+while ($t0.ElapsedMilliseconds -lt 900000) {
+  Start-Sleep -Milliseconds 40
+  $now = [UcaKey]::Down(0x0D)
+  if ($now -and -not $was -and -not [UcaKey]::Down(0x10)) {
+    $fg = [UcaKey]::FgPid()
+    $isWa = $ids -contains $fg
+    if (-not $isWa) { $pn = (Get-Process -Id $fg -ErrorAction SilentlyContinue).ProcessName; $isWa = $pn -and ($names -contains $pn) }
+    if ($isWa) { Write-Output 'ENTER'; exit 0 }
+  }
+  $was = $now
+}
+Write-Output 'TIMEOUT'
+`
+
+/**
+ * Onay beklenirken WhatsApp'ta Enter'a basılmasını bekler (yalnızca Windows). Dönen nesnenin stop() ile izleme durdurulur.
+ * Enter algılanınca onEnter çağrılır. Diğer sistemlerde hiçbir şey yapmaz (onay düğmesiyle devam edilir).
+ */
+export function watchWhatsAppEnter(onEnter: () => void): { stop: () => void } {
+  if (process.platform !== 'win32') return { stop: () => undefined }
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(WIN_ENTER_SCRIPT, 'utf16le').toString('base64')], { windowsHide: true })
+  let out = ''
+  let done = false
+  child.stdout.on('data', (d) => {
+    out += String(d)
+    if (!done && isLine(out, 'ENTER')) {
+      done = true
+      onEnter()
+    }
+  })
+  child.on('error', () => undefined)
+  return { stop: () => { done = true; if (child.exitCode === null) child.kill() } }
+}
+
+const isLine = (out: string, word: string) => out.split(/\r?\n/).some((l) => l.trim() === word)
 
 async function pasteIntoWhatsApp(minDelayMs: number): Promise<PasteResult> {
   if (process.platform === 'win32') {

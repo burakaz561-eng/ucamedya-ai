@@ -22,6 +22,7 @@ interface Req {
   preview: string | null
   testMode: boolean
   manualSend?: boolean
+  autoAdvance?: boolean
   realRecipient?: string
   recipientSource?: string | null
 }
@@ -69,7 +70,7 @@ export function SendConfirm() {
     >
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.1fr)', gap: 16 }}>
         <div className="col" style={{ gap: 10 }}>
-          {cur.manualSend && <Callout tone="brand"><b>WhatsApp uygulamanızda {cur.company} ile sohbet (+{cur.realRecipient ?? cur.recipient}) açıldı ve mesaj yazıldı.</b> Numara doğruysa WhatsApp’ta <b>Enter</b>’a basın{cur.image ? " (görsel ve metin tek mesaj olarak gider; görsel yapıştırılamadıysa aşağıdaki nota bakın)" : ""}; ardından burada “WhatsApp’ta gönderdim” deyin. Göndermezseniz “Göndermedim, atla”.</Callout>}
+          {cur.manualSend && <Callout tone="brand"><b>WhatsApp uygulamanızda {cur.company} ile sohbet (+{cur.realRecipient ?? cur.recipient}) açıldı ve mesaj yazıldı.</b> Numara doğruysa WhatsApp’ta <b>Enter</b>’a basın{cur.image ? " (görsel ve metin tek mesaj olarak gider; görsel yapıştırılamadıysa aşağıdaki nota bakın)" : ""}{cur.autoAdvance ? <>. Enter’a bastığınız algılanınca <b>sıradaki sohbet kendiliğinden açılır</b>; buraya dönmeniz gerekmez.</> : <>; ardından burada “WhatsApp’ta gönderdim” deyin.</>} Göndermezseniz “Göndermedim, atla”.</Callout>}
           {cur.testMode && <Callout tone="warn"><b>Test modu açık:</b> mesaj şirkete ({cur.channel === 'whatsapp' ? `+${cur.realRecipient}` : cur.realRecipient}) değil, sizin test {cur.channel === 'whatsapp' ? 'numaranıza' : 'adresinize'} gider. Gerçek gönderim için Ayarlar → Mesaj gönderimi'nden test modunu kapatın.</Callout>}
           <div className="kv">
             <div>Şirket</div><div><b>{cur.company}</b></div>

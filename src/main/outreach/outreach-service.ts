@@ -11,7 +11,7 @@
 
 import { shell } from 'electron'
 import { copyImageToClipboard } from './image-clipboard'
-import { startPasteIntoWhatsApp } from './whatsapp-paste'
+import { startPasteIntoWhatsApp, watchWhatsAppEnter } from './whatsapp-paste'
 import { imageDataUri, imageFor } from './message-image'
 import type { Db } from '../database/db'
 import { j } from '../database/db'
@@ -58,6 +58,8 @@ export interface ConfirmRequest {
   testMode: boolean
   /** true: gönderimi kullanıcı WhatsApp uygulamasında kendisi yapar, burada yalnızca sonucu bildirir */
   manualSend?: boolean
+  /** WhatsApp'ta Enter algılanınca kendiliğinden sonraki mesaja geçilir */
+  autoAdvance?: boolean
   /** Şirketin gerçek iletişim bilgisi (test modunda mesaj buraya değil test alıcısına gider) */
   realRecipient?: string
   recipientSource?: string | null
@@ -430,7 +432,9 @@ export class OutreachService {
         await this.processMessage(m.id)
         this.emitChange('outreach')
         const s = this.settings.get().outreach
-        const wait = (channel === 'email' ? s.emailIntervalSec : s.whatsappIntervalSec) * 1000
+        // WhatsApp masaüstünde her mesajı kullanıcı kendisi gönderir (Enter); hız onun elindedir, bu yüzden aralık kısa tutulur
+        const desktop = channel === 'whatsapp' && this.transport('whatsapp') === 'whatsapp_desktop'
+        const wait = (channel === 'email' ? s.emailIntervalSec : desktop ? Math.min(s.whatsappIntervalSec, 2) : s.whatsappIntervalSec) * 1000
         const until = Date.now() + wait
         while (Date.now() < until && this.queueState(channel) === 'running') await new Promise((r) => setTimeout(r, 500))
       }
@@ -579,11 +583,25 @@ export class OutreachService {
     }
     this.db.run("UPDATE outreach_messages SET status = 'awaiting_confirm' WHERE id = ?", m.id)
     this.emitChange('outreach')
+    // Otomatik geçiş: WhatsApp'ta Enter'a basıldığı algılanınca (gönderim başlasın diye kısa bir beklemeyle) onay kendiliğinden verilir
+    const autoAdvance = s.outreach.desktopAutoAdvance !== false && process.platform === 'win32'
+    let byEnter = false
+    const watcher = autoAdvance
+      ? watchWhatsAppEnter(() => {
+          setTimeout(() => {
+            if (!this.pendingConfirm.has(m.id)) return
+            byEnter = true
+            this.decide(m.id, 'send')
+          }, 1200)
+        })
+      : null
     const decision = await new Promise<'send' | 'skip' | 'stop'>((resolve) => {
       this.pendingConfirm.set(m.id, resolve)
       const rec = this.recipient(m.company_id, 'whatsapp')
-      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, image: img ? imageDataUri(img) : null, imageNote, preview: null, testMode: false, manualSend: true })
+      this.emitConfirm({ realRecipient: m.recipient_key, recipientSource: rec?.key === m.recipient_key ? rec.source : null, messageId: m.id, channel: 'whatsapp', company, recipient: to, recipientVerified: false, verifyNote: 'Sohbet şirketin numarasıyla açıldı ve mesaj yazıldı. WhatsApp’ta Enter’a bastığınızda mesaj gerçekten şirkete gider; göndermek istemezseniz kutuyu temizleyip "Göndermedim, atla" deyin.', subject: null, body: m.body, attachment: null, image: img ? imageDataUri(img) : null, imageNote, preview: null, testMode: false, manualSend: true, autoAdvance })
     })
+    watcher?.stop()
+    if (byEnter) this.companies.log(m.company_id, 'WhatsApp\'ta Enter algılandı, sonraki mesaja geçildi', `+${to}`, 'system', 'message', m.id)
     this.emitConfirm({ messageId: m.id, closed: true })
     if (decision === 'send') return 'sent'
     this.db.run("UPDATE outreach_messages SET status = ?, error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", decision === 'skip' ? 'cancelled' : 'queued', decision === 'skip' ? 'Kullanıcı göndermediğini bildirdi.' : null, m.id)
