@@ -4,6 +4,7 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { MIGRATIONS } from './migrations'
+import { DETERMINISTIC_UIDS_SQL } from '../sync/sync-schema'
 import { DEFAULT_SERVICES, DEFAULT_STAGES } from '@shared/constants'
 import { DEFAULT_PROFILES } from '../research/profiles'
 
@@ -107,6 +108,8 @@ export class Db {
         for (const p of DEFAULT_PROFILES) this.run('INSERT INTO automation_profiles(name,description,config) VALUES (?,?,?)', p.name, p.description, JSON.stringify(p.config))
       }
       for (const k of INTEGRATION_KEYS) this.run('INSERT OR IGNORE INTO integrations(key) VALUES (?)', k)
+      // Ekip eşitlemesi: tohum satırlar her bilgisayarda aynı uid'yi alır
+      if (this.get("SELECT 1 FROM pragma_table_info('stages') WHERE name = 'uid'")) this.raw.exec(DETERMINISTIC_UIDS_SQL)
     })
   }
 

@@ -2,6 +2,8 @@
 // PRAGMA user_version ile sürümlenir. Var olan bir migration ASLA değiştirilmez; değişiklik
 // yeni bir sürüm olarak eklenir (kullanıcı verisi güncellemede korunur).
 
+import { syncMigrationSql } from '../sync/sync-schema'
+
 export interface Migration {
   version: number
   name: string
@@ -542,5 +544,10 @@ INSERT INTO stages(key, label, color, position, terminal, system)
   SELECT 'replied', 'Yanıt geldi', 'success', COALESCE((SELECT position FROM stages WHERE key = 'waiting_reply') + 1, (SELECT MAX(position) + 1 FROM stages)), 0, 1
   WHERE EXISTS (SELECT 1 FROM stages) AND NOT EXISTS (SELECT 1 FROM stages WHERE key = 'replied');
 `
+  },
+  {
+    version: 4,
+    name: '0.4: ekip eşitlemesi (uid, giden kutusu, gölge kopya)',
+    sql: syncMigrationSql()
   }
 ]
