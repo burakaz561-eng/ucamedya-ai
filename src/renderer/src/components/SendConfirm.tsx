@@ -2,7 +2,7 @@
 // Ayrıca ajan tarayıcısı kullanıcı müdahalesi beklediğinde (giriş, CAPTCHA) ekranın altında uyarı gösterir.
 
 import { useEffect, useState } from 'react'
-import { Send, SkipForward, OctagonX, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Send, SkipForward, OctagonX, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
 import { call } from '../lib/api'
 import { Badge, Btn, Callout, Modal } from './ui'
 import { Robot } from '../robot/Robot'
@@ -27,14 +27,18 @@ interface Req {
   recipientSource?: string | null
 }
 
+type Summary = { channel: 'email' | 'whatsapp'; sent: number; failed: number; skipped: number; stoppedAfterErrors?: boolean }
+
 export function SendConfirm() {
   const [queue, setQueue] = useState<Req[]>([])
+  const [summary, setSummary] = useState<Summary | null>(null)
   const [busy, setBusy] = useState(false)
   const [checked, setChecked] = useState(false)
   useEffect(
     () =>
       window.api.on('outreach-confirm', (p) => {
-        const r = p as Req | { messageId: number; closed: true }
+        const r = p as Req | { messageId: number; closed: true } | { summary: Summary }
+        if ('summary' in r) return setSummary(r.summary)
         if ('closed' in r) setQueue((q) => q.filter((x) => x.messageId !== r.messageId))
         else setQueue((q) => [...q.filter((x) => x.messageId !== r.messageId), r])
       }),
@@ -42,6 +46,7 @@ export function SendConfirm() {
   )
   const cur = queue[0]
   useEffect(() => setChecked(false), [cur?.messageId])
+  if (!cur && summary) return <QueueSummary s={summary} onClose={() => setSummary(null)} />
   if (!cur) return null
   const decide = async (d: 'send' | 'skip' | 'stop') => {
     setBusy(true)
@@ -104,6 +109,42 @@ export function SendConfirm() {
           {cur.preview ? <img src={cur.preview} alt="Tarayıcı önizlemesi" style={{ width: '100%', borderRadius: 10, border: '1px solid var(--line)' }} /> : <div className="muted small">Önizleme alınamadı; tarayıcı penceresine bakın.</div>}
         </div>
       </div>
+    </Modal>
+  )
+}
+
+/** Kuyruk bitince (ya da üst üste hatalarda durunca) tek seferlik özet: hatalar gönderim sırasında soru sormaz, burada toplanır. */
+function QueueSummary({ s, onClose }: { s: Summary; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const name = s.channel === 'email' ? 'E-posta' : 'WhatsApp'
+  const retry = async () => {
+    setBusy(true)
+    try {
+      await call('outreach:retryFailed', { channel: s.channel })
+      await call('outreach:start', { channel: s.channel })
+    } finally {
+      setBusy(false)
+      onClose()
+    }
+  }
+  return (
+    <Modal
+      title={s.stoppedAfterErrors ? `${name} kuyruğu durdu` : `${name} gönderimi bitti`}
+      sub={s.stoppedAfterErrors ? 'Üst üste 5 mesaj gönderilemedi; sorun tek bir mesajda değil gibi görünüyor (tarayıcı / oturum / bağlantı). Kontrol edip devam ettirin.' : 'Kuyruktaki mesajlar işlendi.'}
+      onClose={onClose}
+      footer={
+        <>
+          <Btn onClick={onClose}>Kapat</Btn>
+          {s.failed > 0 && <Btn variant="primary" icon={<RotateCcw />} disabled={busy} onClick={retry}>Gönderilemeyenleri tekrar dene ({s.failed})</Btn>}
+        </>
+      }
+    >
+      <div className="kv">
+        <div>Gönderildi</div><div><Badge tone="success">{s.sent}</Badge></div>
+        <div>Gönderilemedi</div><div><Badge tone={s.failed ? 'danger' : 'neutral'}>{s.failed}</Badge></div>
+        <div>Atlandı</div><div><Badge tone="neutral">{s.skipped}</Badge></div>
+      </div>
+      {s.failed > 0 && <div className="small muted" style={{ marginTop: 10 }}>Hataların nedenleri {name} sayfasında "Hataları göster" ve Gönderimler → "İptal / hata" filtresinde. Durumu belirsiz olanlar (alıcıya ulaşmış olabilir) tekrar gönderilmez.</div>}
     </Modal>
   )
 }

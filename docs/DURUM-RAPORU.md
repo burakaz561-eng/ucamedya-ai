@@ -2,6 +2,14 @@
 
 Sürüm **0.2.1** · 2026-10-24 · Windows 11 üzerinde derlendi ve test edildi.
 
+## 0.4.5 — Hatada durmadan devam, sonda özet; e-posta hızlandırma
+
+- Kullanıcı isteği (2026-10-29): hata olunca sormadan sıradakine geçsin, bitince en sonda sorsun; e-posta ve WhatsApp hızlansın.
+- Kuyruk: gönderilemeyen mesaj "failed" işaretlenir (nedeniyle), beklemeden sıradakine geçilir. Bekleme yalnızca gerçek gönderimden sonra. Kuyruk bitince özet penceresi: gönderildi / gönderilemedi / atlandı + "Gönderilemeyenleri tekrar dene". Üst üste 5 hata olursa (tarayıcı/oturum sorunu) kuyruk durur ve özet gösterilir.
+- Webmail: oturum açıkken her mesajda gelen kutusu yeniden yüklenmez; "ileti penceresi bulunamadı" hatasında ileti bir kez yeniden hazırlanıp gönderilir; doğrulanamayan gönderimde kuyruk artık durmaz (tekrar gönderilmez, kayıtta görünür). Kullanıcının e-posta aralığı 45 sn → 5 sn.
+- WhatsApp otomatik gönderimde görsel yapıştırılamaz veya Enter basılamazsa onay sorulmaz; mesaj gönderilmedi işaretlenip geçilir.
+- Test: tests/core.test.ts "hatada durmadan sıradakine geçer" (72 test geçti). 🟡 Gerçek webmail ile hız ölçülmedi (oturum kullanıcıda).
+
 ## 0.4.4 — WhatsApp hız ve filtre
 
 - "WhatsApp’ta gönderdim" denince sıradaki sohbet 0,5 sn içinde açılır (önceden otomatik gönderim açıkken 30 sn bekleniyordu).

@@ -377,6 +377,7 @@ export function registerIpc(s: AppServices, getWindow: () => BrowserWindow | nul
     'outreach:cancel': (p) => s.outreach.cancelQueue(z.enum(['email', 'whatsapp']).parse(p?.channel)),
     'outreach:messages': (p) => s.outreach.listMessages(z.object({ channel: optStr(20), status: optStr(20), limit: z.number().int().max(5000).optional() }).parse(p ?? {}) as { channel?: string; status?: string; limit?: number }),
     'outreach:retry': (p) => s.outreach.retry(id.parse(p?.id)),
+    'outreach:retryFailed': (p) => s.outreach.retryFailed(z.enum(['email', 'whatsapp']).parse(p?.channel)),
     'outreach:decide': (p) => s.outreach.decide(id.parse(p?.messageId), z.enum(['send', 'skip', 'stop']).parse(p?.decision)),
 
     // ---------------- Ajan tarayıcısı (Canlı Kontrol Merkezi) ----------------

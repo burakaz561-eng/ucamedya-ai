@@ -71,13 +71,16 @@ export interface ConfirmRequest {
 
 type Channel = 'email' | 'whatsapp'
 
+export type QueueSummary = { channel: Channel; sent: number; failed: number; skipped: number; stoppedAfterErrors?: boolean }
+type ConfirmEvent = ConfirmRequest | { messageId: number; closed: true } | { summary: QueueSummary }
+
 export class OutreachService {
   private loops = new Map<Channel, boolean>()
   private pendingConfirm = new Map<number, (d: 'send' | 'skip' | 'stop') => void>()
   private web: WebTransports | null = null
-  private emitConfirm: (r: ConfirmRequest | { messageId: number; closed: true }) => void = () => undefined
+  private emitConfirm: (r: ConfirmEvent) => void = () => undefined
 
-  attachWeb(web: WebTransports, emitConfirm: (r: ConfirmRequest | { messageId: number; closed: true }) => void) {
+  attachWeb(web: WebTransports, emitConfirm: (r: ConfirmEvent) => void) {
     this.web = web
     this.emitConfirm = emitConfirm
   }
@@ -426,15 +429,36 @@ export class OutreachService {
 
   private async loop(channel: Channel) {
     this.loops.set(channel, true)
+    // Bu çalıştırmanın sonuçları: kuyruk bitince tek seferde özet gösterilir (hatalarda araya soru girmez)
+    const run = { sent: 0, failed: 0, skipped: 0 }
+    let streak = 0
     try {
       while (this.queueState(channel) === 'running') {
         const m = this.db.get<{ id: number }>("SELECT id FROM outreach_messages WHERE channel = ? AND status = 'queued' ORDER BY id LIMIT 1", channel)
         if (!m) {
           this.settings.setValue(`queue:${channel}`, 'stopped')
+          if (run.sent + run.failed + run.skipped) this.emitConfirm({ summary: { channel, ...run } })
           break
         }
         await this.processMessage(m.id)
         this.emitChange('outreach')
+        const st = this.db.get<{ status: string }>('SELECT status FROM outreach_messages WHERE id = ?', m.id)?.status ?? ''
+        const ok = ['sent', 'test_sent', 'unverified', 'draft_saved', 'prepared'].includes(st)
+        if (ok) run.sent++
+        else if (['failed', 'blocked'].includes(st)) run.failed++
+        else if (st === 'cancelled') run.skipped++
+        // Üst üste 5 hata: sorun tek mesajda değil (tarayıcı kapandı, oturum düştü...) — kuyruk durur, mesajlar boşa yanmaz
+        streak = ['failed', 'blocked'].includes(st) ? streak + 1 : 0
+        if (streak >= 5) {
+          this.pauseQueue(channel)
+          this.emitConfirm({ summary: { channel, ...run, stoppedAfterErrors: true } })
+          break
+        }
+        // Gönderilmeyen (hata / atlandı) mesajdan sonra beklemeden sıradakine geçilir
+        if (!ok) {
+          await new Promise((r) => setTimeout(r, 300))
+          continue
+        }
         const s = this.settings.get().outreach
         // WhatsApp masaüstü: kullanıcı "gönderdim" dediyse hemen sıradakine geçilir (hız onun elinde);
         // uygulama Enter'a bastıysa ayarlardaki aralık (en az 3 sn) beklenir
@@ -549,9 +573,8 @@ export class OutreachService {
       log('warn', `Gönderim başarısız (#${id}): ${msg}`)
       const cur = this.db.get<{ status: string }>('SELECT status FROM outreach_messages WHERE id = ?', id)?.status
       if (cur === 'preparing' || cur === 'awaiting_confirm') {
-        // Henüz gönder düğmesine basılmadı: mesaj güvenle kuyruğa döner, kuyruk duraklatılır
-        this.db.run("UPDATE outreach_messages SET status = 'queued', error = ? WHERE id = ?", `Hazırlık yarıda kaldı: ${msg.slice(0, 300)}`, id)
-        this.pauseQueue(m.channel)
+        // Henüz gönder düğmesine basılmadı (gönderilmedi): hatalı işaretlenir, kuyruk sıradakiyle devam eder; "Tekrar" ile yeniden denenebilir
+        this.db.run("UPDATE outreach_messages SET status = 'failed', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", `Gönderilmedi — hazırlık yarıda kaldı: ${msg.slice(0, 300)}`, id)
         return
       }
       this.db.run("UPDATE outreach_messages SET status = 'failed', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", msg.slice(0, 1000), id)
@@ -588,18 +611,23 @@ export class OutreachService {
       return 'handled'
     }
     // Otomatik gönderim (kullanıcı Ayarlar'da açtıysa): Enter'a uygulama basar. Test modunda veya görsel yapıştırılamadıysa
-    // yapılmaz (görselsiz / yanlış mesaj gitmesin); o zaman her zamanki onay akışına düşülür.
+    // yapılmaz (görselsiz / yanlış mesaj gitmesin). Kullanıcı soru istemediği için mesaj "gönderilmedi" diye işaretlenir ve
+    // kuyruk sıradakiyle devam eder; kuyruk bitince özet gösterilir (ör. WhatsApp'ı olmayan sabit hat numarası).
     if (autoSendEnabled(s.outreach)) {
-      if (img && !paste?.ok) {
-        this.companies.log(m.company_id, 'Otomatik gönderilmedi: görsel yapıştırılamadı', 'Enter\'a sizin basmanız bekleniyor', 'system', 'message', m.id)
-      } else {
+      let reason: string
+      if (img && !paste?.ok) reason = `görsel yapıştırılamadı (${paste?.reason ?? 'pano'})`
+      else {
         const enter = await pressEnterInWhatsApp(img ? 1500 : 3000)
         if (enter.ok) {
           this.companies.log(m.company_id, 'WhatsApp\'ta Enter\'a uygulama bastı (otomatik gönderim)', `+${to} · WhatsApp'ın içi okunamadığı için gidiş ayrıca doğrulanamaz`, 'system', 'message', m.id)
           return 'auto-sent'
         }
-        this.companies.log(m.company_id, 'Otomatik gönderilmedi: Enter\'a basılamadı', enter.reason, 'system', 'message', m.id)
+        reason = `Enter'a basılamadı (${enter.reason})`
       }
+      const error = `Gönderilmedi — otomatik gönderim yapılamadı: ${reason}. Numaranın WhatsApp'ı olmayabilir.`
+      this.db.run("UPDATE outreach_messages SET status = 'failed', error = ?, status_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", error, m.id)
+      this.companies.log(m.company_id, 'WhatsApp otomatik gönderilmedi, sıradakine geçildi', reason, 'system', 'message', m.id)
+      return 'handled'
     }
     this.db.run("UPDATE outreach_messages SET status = 'awaiting_confirm' WHERE id = ?", m.id)
     this.emitChange('outreach')
@@ -664,7 +692,7 @@ export class OutreachService {
         if (r.code === 'invalid_number') {
           this.db.run("UPDATE company_contacts SET label = 'WhatsApp yok' WHERE company_id = ? AND value_key = ? AND type IN ('phone','whatsapp')", m.company_id, m.recipient_key)
           this.companies.log(m.company_id, 'WhatsApp numarası geçersiz', r.reason, 'system', 'message', m.id)
-        } else this.pauseQueue(m.channel)
+        }
         return 'handled'
       }
       verified = r.recipientVerified
@@ -675,7 +703,7 @@ export class OutreachService {
       const r = await mail.prepare({ to, subject, body: m.body, attachment: attachments }, company)
       if (!r.ok) {
         setStatus('failed', r.reason)
-        this.pauseQueue(m.channel)
+        if (r.code === 'no_url') this.pauseQueue(m.channel)
         return 'handled'
       }
       verified = r.recipientVerified
@@ -713,12 +741,23 @@ export class OutreachService {
 
     // 4) Gönder ve doğrula
     this.db.run("UPDATE outreach_messages SET status = 'sending' WHERE id = ?", m.id)
-    const res = m.channel === 'whatsapp' ? await this.web.wa.send(m.body, company) : await (this.transport('email') === 'webmail' ? this.web.rc : this.web.gmail).send(company)
+    const sendMail = async () => {
+      const mail = this.transport('email') === 'webmail' ? this.web!.rc : this.web!.gmail
+      try {
+        return await mail.send(company)
+      } catch (e) {
+        // Onay beklerken ileti ekranı kapandıysa (henüz gönderilmedi) ileti yeniden hazırlanıp bir kez daha denenir
+        if (!/ileti penceresi bulunamadı/.test((e as Error).message)) throw e
+        const again = await mail.prepare({ to, subject, body: m.body, attachment: attachments }, company)
+        if (!again.ok) throw new Error(again.reason)
+        return mail.send(company)
+      }
+    }
+    const res = m.channel === 'whatsapp' ? await this.web.wa.send(m.body, company) : await sendMail()
     if (res.status === 'unverified') {
       setStatus('unverified', res.detail)
       this.companies.log(m.company_id, 'Gönderim doğrulanamadı', res.detail, 'system', 'message', m.id)
       if (m.draft_id && !testMode) this.db.run("UPDATE outreach_drafts SET status = 'sent' WHERE id = ?", m.draft_id)
-      this.pauseQueue(m.channel)
       return 'handled'
     }
     return 'sent'
@@ -731,6 +770,13 @@ export class OutreachService {
     if (/Durum belirsiz/.test(m.error ?? '')) throw new Error('Bu mesajın durumu belirsiz (alıcıya ulaşmış olabilir). Tekrar göndermek için önce alıcıyla teyit edin ve yeni bir taslak oluşturun.')
     this.db.run("UPDATE outreach_messages SET status = 'queued', error = NULL WHERE id = ?", id)
     this.emitChange('outreach')
+  }
+
+  /** Kanaldaki tüm başarısız mesajları (durumu kesin "gönderilmedi" olanları) yeniden kuyruğa alır; belirsizler hariç. */
+  retryFailed(channel: Channel) {
+    const r = this.db.run("UPDATE outreach_messages SET status = 'queued', error = NULL WHERE channel = ? AND status = 'failed' AND (error IS NULL OR error NOT LIKE '%Durum belirsiz%')", channel)
+    this.emitChange('outreach')
+    return r.changes
   }
 
   /** Manuel WhatsApp modu: sıradaki mesajı kullanıcının WhatsApp uygulamasında hazır açar; gönderme kullanıcıdadır. */

@@ -731,3 +731,39 @@ describe('WhatsApp yapıştırma sonucu', () => {
     expect(isOk('')).toBe(false)
   })
 })
+
+describe('kuyruk: hatada durmadan sıradakine geçer, bitince özet verir', () => {
+  it('başarısız mesajlar kuyruğu duraklatmaz; sonunda tek özet gelir', async () => {
+    const { OutreachService } = await import('../src/main/outreach/outreach-service')
+    const dir = mkdtempSync(join(tmpdir(), 'uca-qs-'))
+    const db = new Db(join(dir, 'q.sqlite'))
+    db.migrate()
+    const files = new FileStore(db, () => join(dir, 'data'))
+    const cs = new CompanyService(db, files)
+    const settings = new SettingsService(db)
+    settings.update({ outreach: { ...settings.get().outreach, emailChannel: 'smtp', testMode: true, testRecipientEmail: 'test@ucamedya.com.tr', includeOptOutLine: false, emailIntervalSec: 5 } } as any)
+    db.run("INSERT INTO email_accounts(label, provider, from_email, status) VALUES ('t', 'smtp', 'info@ucamedya.com.tr', 'ok')")
+    // Parola kayıtlı değil: her gönderim hata verir
+    const os = new OutreachService(db, cs, settings, { get: () => undefined, has: () => false } as any, files, () => null, () => undefined)
+    const events: any[] = []
+    os.attachWeb({ available: () => false } as any, (e) => events.push(e))
+    const ids: number[] = []
+    for (const [n, e] of [['Alfa Lojistik', 'info@alfa.com.tr'], ['Beta Lojistik', 'info@beta.com.tr'], ['Gama Lojistik', 'info@gama.com.tr']]) {
+      const c = cs.create({ name: n, source: 'manual' } as any)
+      cs.addContact(c, { type: 'email', value: e, sourceType: 'website' })
+      ids.push((await os.createDraft(c, 'email', 'professional', false) as any).id)
+    }
+    os.setDraftStatus(ids, 'approved')
+    os.enqueue(ids)
+    os.startQueue('email')
+    const end = Date.now() + 8000
+    while (!events.some((e) => e.summary) && Date.now() < end) await new Promise((r) => setTimeout(r, 100))
+    const sum = events.find((e) => e.summary)?.summary
+    expect(sum).toEqual({ channel: 'email', sent: 0, failed: 3, skipped: 0 })
+    expect(db.get<{ n: number }>("SELECT COUNT(*) n FROM outreach_messages WHERE status = 'failed'")!.n).toBe(3)
+    expect(os.retryFailed('email')).toBe(3)
+    os.cancelQueue('email')
+    ;(db.raw as any).close?.()
+    rmSync(dir, { recursive: true, force: true })
+  })
+})

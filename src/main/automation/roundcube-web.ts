@@ -59,8 +59,10 @@ export class RoundcubeWeb {
     return this.agent.run(async () => {
       const page = await this.agent.page('gmail')
       this.agent.touch(page)
+      // Zaten webmail'de ve oturum açıksa sayfa yeniden yüklenmez (her mesajda birkaç saniye kazandırır)
+      if (page.url().startsWith(this.base()) && (await this.state(page)).loggedIn) return true
       await page.goto(`${this.base()}?_task=mail&_mbox=INBOX`, { waitUntil: 'domcontentloaded', timeout: 45000 })
-      await sleep(1500)
+      for (let i = 0; i < 10 && !(await this.state(page)).loggedIn; i++) await sleep(300)
       if ((await this.state(page)).loggedIn) return true
       await this.agent.waitForUser(page, 'Webmail oturumu kapalı. Lütfen açılan tarayıcıda e-posta adresiniz ve şifrenizle kendiniz giriş yapın (şifre uygulamaya girilmez).', async () => (await this.state(page)).loggedIn, 10 * 60 * 1000, company)
       return true
@@ -136,6 +138,8 @@ export class RoundcubeWeb {
     return this.agent.run(async () => {
       const page = await this.agent.page('gmail')
       this.agent.touch(page)
+      // Sayfa o an meşgul olabilir: kısa süre yeniden bakılır
+      for (let i = 0; i < 6 && (await this.state(page)).action !== 'compose'; i++) await sleep(500)
       if ((await this.state(page)).action !== 'compose') throw new Error('Gönderilecek ileti penceresi bulunamadı.')
       this.agent.report({ state: 'busy', step: 'E-posta gönderiliyor', company })
       await page.evaluate(`rcmail.command('send')`)
